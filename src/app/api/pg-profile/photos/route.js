@@ -1,0 +1,9 @@
+export async function POST() {
+  return Response.json(
+    {
+      success: true,
+      data: null
+    },
+    { status: 201 }
+  );
+}
