@@ -9,13 +9,14 @@ import {
 import {
   validateUpdateTenant,
 } from "@/modules/tenants/tenant.validation";
+import { getCurrentOwner } from "@/modules/auth/auth.service";
 
 export async function GET(request, { params }) {
   try {
     const { tenantId } = await params;
     console.log("Tenant ID:", tenantId);
-    const { searchParams } = new URL(request.url);
-    const ownerId = searchParams.get("ownerId");
+    const { ownerId } =
+  await getCurrentOwner();
 
     if (!ownerId) {
       return NextResponse.json(
@@ -65,8 +66,8 @@ export async function PATCH(request, { params }) {
   try {
     const { tenantId } = await params;
 
-    const { searchParams } = new URL(request.url);
-    const ownerId = searchParams.get("ownerId");
+    const { ownerId } =
+  await getCurrentOwner();
 
     if (!ownerId) {
       return NextResponse.json(
@@ -132,9 +133,8 @@ export async function DELETE(request, { params }) {
   try {
     const { tenantId } = await params;
 
-    const { searchParams } = new URL(request.url);
-
-    const ownerId = searchParams.get("ownerId");
+    const { ownerId } =
+  await getCurrentOwner();
 
     if (!ownerId) {
       return NextResponse.json(

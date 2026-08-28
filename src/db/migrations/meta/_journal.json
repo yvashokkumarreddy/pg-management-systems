@@ -8,6 +8,27 @@
       "when": 1787160854156,
       "tag": "0000_sparkling_may_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787930000807,
+      "tag": "0001_chubby_leech",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787931350359,
+      "tag": "0002_next_proudstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787936085547,
+      "tag": "0003_stormy_corsair",
+      "breakpoints": true
     }
   ]
 }

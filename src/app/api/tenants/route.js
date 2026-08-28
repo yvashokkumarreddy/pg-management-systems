@@ -5,6 +5,7 @@ import {
   createTenantService,
   getTenantsService,
 } from "@/modules/tenants/tenant.service";
+import { getCurrentOwner } from "@/modules/auth/auth.service";
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -53,12 +54,8 @@ export async function POST(request) {
 }
 export async function GET(request) {
   try {
-    const { searchParams } = new URL(
-      request.url
-    );
-
-    const ownerId =
-      searchParams.get("ownerId");
+    const { ownerId } =
+  await getCurrentOwner();
 
     if (!ownerId) {
       return NextResponse.json(

@@ -1,10 +1,31 @@
-import { z } from "zod";
+export function validateLogin(
+  data
+) {
+  const errors = {};
 
-export const requestOtpSchema = z.object({
-  phone: z.string().min(10).max(15)
-});
 
-export const verifyOtpSchema = z.object({
-  phone: z.string().min(10).max(15),
-  otp: z.string().min(4).max(8)
-});
+  if (
+    !data.email ||
+    typeof data.email !== "string"
+  ) {
+    errors.email =
+      "Email is required";
+  }
+
+
+  if (
+    !data.password ||
+    typeof data.password !== "string"
+  ) {
+    errors.password =
+      "Password is required";
+  }
+
+
+  return {
+    isValid:
+      Object.keys(errors).length === 0,
+
+    errors,
+  };
+}

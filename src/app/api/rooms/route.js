@@ -8,6 +8,7 @@ import {
 import {
   validateCreateRoom,
 } from "@/modules/rooms/room.validation";
+import { getCurrentOwner } from "@/modules/auth/auth.service";
 
 
 export async function POST(request) {
@@ -73,8 +74,8 @@ export async function GET(request) {
     const { searchParams } =
       new URL(request.url);
 
-    const ownerId =
-      searchParams.get("ownerId");
+    const { ownerId } =
+  await getCurrentOwner();
 
     const status =
       searchParams.get("status") ||

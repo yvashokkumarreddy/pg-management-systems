@@ -1,0 +1,111 @@
+import {
+  NextResponse,
+} from "next/server";
+
+import {
+  archiveTenantDocumentService,
+} from "@/modules/documents/document.service";
+
+
+export async function DELETE(
+  request,
+  { params }
+) {
+  try {
+    const {
+      tenantId,
+      documentId,
+    } =
+      await params;
+
+
+    const {
+      searchParams,
+    } =
+      new URL(
+        request.url
+      );
+
+
+    const ownerId =
+      searchParams.get(
+        "ownerId"
+      );
+
+
+    if (!ownerId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Owner ID is required",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+
+    const result =
+      await archiveTenantDocumentService(
+        tenantId,
+        documentId,
+        ownerId
+      );
+
+
+    return NextResponse.json({
+      success: true,
+
+      message:
+        "Document archived successfully",
+
+      data:
+        result,
+    });
+  } catch (error) {
+    console.error(
+      "Archive tenant document error:",
+      error
+    );
+
+
+    let status =
+      500;
+
+
+    if (
+      error.message ===
+        "Tenant not found" ||
+      error.message ===
+        "Document not found"
+    ) {
+      status =
+        404;
+    }
+
+
+    if (
+      error.message ===
+      "Document is already archived"
+    ) {
+      status =
+        400;
+    }
+
+
+    return NextResponse.json(
+      {
+        success: false,
+
+        message:
+          error.message ||
+          "Failed to archive document",
+      },
+      {
+        status,
+      }
+    );
+  }
+}

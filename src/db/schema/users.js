@@ -12,11 +12,16 @@ export const userStatusEnum = pgEnum("user_status", [
 
 export const users = pgTable("users", {
   id: varchar("id", { length: 36 }).primaryKey(),
+  authUserId: varchar(
+      "auth_user_id",
+      {
+        length: 36,
+      }
+    ).unique(),
 
   name: varchar("name", { length: 100 }),
 
   phone: varchar("phone", { length: 20 })
-    .notNull()
     .unique(),
 
   email: varchar("email", { length: 255 }).unique(),

@@ -9,6 +9,7 @@ import {
 import {
   validateUpdateRoom,
 } from "@/modules/rooms/room.validation";
+import { getCurrentOwner } from "@/modules/auth/auth.service";
 
 
 export async function GET(
@@ -18,11 +19,8 @@ export async function GET(
   try {
     const { roomId } = await params;
 
-    const { searchParams } =
-      new URL(request.url);
-
-    const ownerId =
-      searchParams.get("ownerId");
+    const { ownerId } =
+  await getCurrentOwner();
 
     if (!ownerId) {
       return NextResponse.json(
@@ -81,11 +79,8 @@ export async function PATCH(
   try {
     const { roomId } = await params;
 
-    const { searchParams } =
-      new URL(request.url);
-
-    const ownerId =
-      searchParams.get("ownerId");
+    const { ownerId } =
+  await getCurrentOwner();
 
     if (!ownerId) {
       return NextResponse.json(
@@ -178,11 +173,8 @@ export async function DELETE(
   try {
     const { roomId } = await params;
 
-    const { searchParams } =
-      new URL(request.url);
-
-    const ownerId =
-      searchParams.get("ownerId");
+    const { ownerId } =
+  await getCurrentOwner();
 
     if (!ownerId) {
       return NextResponse.json(
