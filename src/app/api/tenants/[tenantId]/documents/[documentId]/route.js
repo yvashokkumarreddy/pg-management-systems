@@ -5,6 +5,7 @@ import {
 import {
   archiveTenantDocumentService,
 } from "@/modules/documents/document.service";
+import { getCurrentOwner } from "@/modules/auth/auth.service";
 
 
 export async function DELETE(
@@ -19,18 +20,8 @@ export async function DELETE(
       await params;
 
 
-    const {
-      searchParams,
-    } =
-      new URL(
-        request.url
-      );
-
-
-    const ownerId =
-      searchParams.get(
-        "ownerId"
-      );
+    const { ownerId } =
+  await getCurrentOwner();
 
 
     if (!ownerId) {
