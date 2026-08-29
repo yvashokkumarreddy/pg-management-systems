@@ -5,7 +5,10 @@ import {
 import {
   archiveTenantDocumentService,
 } from "@/modules/documents/document.service";
-import { getCurrentOwner } from "@/modules/auth/auth.service";
+
+import {
+  getCurrentOwner,
+} from "@/modules/auth/auth.service";
 
 
 export async function DELETE(
@@ -16,26 +19,13 @@ export async function DELETE(
     const {
       tenantId,
       documentId,
+    } = await params;
+
+
+    const {
+      ownerId,
     } =
-      await params;
-
-
-    const { ownerId } =
-  await getCurrentOwner();
-
-
-    if (!ownerId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Owner ID is required",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
+      await getCurrentOwner();
 
 
     const result =
@@ -55,6 +45,7 @@ export async function DELETE(
       data:
         result,
     });
+
   } catch (error) {
     console.error(
       "Archive tenant document error:",
@@ -62,8 +53,15 @@ export async function DELETE(
     );
 
 
-    let status =
-      500;
+    let status = 500;
+
+
+    if (
+      error.message ===
+      "Unauthorized"
+    ) {
+      status = 401;
+    }
 
 
     if (
@@ -72,8 +70,7 @@ export async function DELETE(
       error.message ===
         "Document not found"
     ) {
-      status =
-        404;
+      status = 404;
     }
 
 
@@ -81,8 +78,7 @@ export async function DELETE(
       error.message ===
       "Document is already archived"
     ) {
-      status =
-        400;
+      status = 400;
     }
 
 

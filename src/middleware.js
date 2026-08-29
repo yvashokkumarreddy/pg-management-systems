@@ -12,6 +12,7 @@ export const config = {
     "/tenants/:path*",
     "/payments/:path*",
     "/pg-profile/:path*",
-    "/settings/:path*"
+    "/settings/:path*",
+    "/rent/:path*",
   ]
 };

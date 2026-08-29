@@ -9,6 +9,7 @@ import {
   payments,
   rentBills,
   rooms,
+  pgProfiles ,
   tenants,
 } from "@/db/schema";
 
@@ -219,4 +220,20 @@ export async function findDashboardPayments(
         payments.createdAt
       )
     );
+}
+
+export async function findPgProfileForDashboard(
+  dbClient,
+  ownerId
+) {
+  const [property] = await dbClient
+    .select({
+      pgName: pgProfiles.pgName,
+      address: pgProfiles.address,
+    })
+    .from(pgProfiles)
+    .where(eq(pgProfiles.ownerId, ownerId))
+    .limit(1);
+
+  return property || null;
 }

@@ -18,16 +18,16 @@ import {
 
 
 const BUCKET_NAME =
-  "tenant-documents";
+  "tanent-documents";
 
 const SIGNED_URL_EXPIRY_SECONDS =
   60 * 10;
 
 
-/*
- * Make filename safe for
- * Storage paths.
- */
+/* ======================================================
+   SANITIZE FILE NAME
+====================================================== */
+
 function sanitizeFileName(
   fileName
 ) {
@@ -45,13 +45,10 @@ function sanitizeFileName(
 }
 
 
-/*
- * Postman sometimes sends JPG
- * as application/octet-stream.
- *
- * Determine proper content type
- * from extension.
- */
+/* ======================================================
+   RESOLVE CONTENT TYPE
+====================================================== */
+
 function getContentType(
   file
 ) {
@@ -63,11 +60,13 @@ function getContentType(
     return file.type;
   }
 
+
   const extension =
     file.name
       ?.split(".")
       .pop()
       ?.toLowerCase();
+
 
   if (
     extension === "jpg" ||
@@ -76,11 +75,13 @@ function getContentType(
     return "image/jpeg";
   }
 
+
   if (
     extension === "png"
   ) {
     return "image/png";
   }
+
 
   if (
     extension === "pdf"
@@ -88,27 +89,40 @@ function getContentType(
     return "application/pdf";
   }
 
+
   return "application/octet-stream";
 }
 
 
+/* ======================================================
+   BUILD STORAGE FOLDER
+====================================================== */
+
 function buildStorageFolder(
-  type,
-  side
+  documentType,
+  documentSide
 ) {
-  if (type === "AADHAAR") {
-    return (
-      `aadhaar/${side.toLowerCase()}`
-    );
+  if (
+    documentType === "AADHAAR"
+  ) {
+    return `aadhaar/${documentSide.toLowerCase()}`;
   }
 
-  if (type === "PHOTO") {
+
+  if (
+    documentType === "PHOTO"
+  ) {
     return "photo";
   }
+
 
   return "other";
 }
 
+
+/* ======================================================
+   CREATE PRIVATE SIGNED URL
+====================================================== */
 
 async function createSignedUrl(
   storagePath
@@ -126,6 +140,7 @@ async function createSignedUrl(
         SIGNED_URL_EXPIRY_SECONDS
       );
 
+
   if (error) {
     console.error(
       "Create signed URL error:",
@@ -135,23 +150,36 @@ async function createSignedUrl(
     return null;
   }
 
-  return data?.signedUrl ?? null;
+
+  return (
+    data?.signedUrl ??
+    null
+  );
 }
 
+
+/* ======================================================
+   UPLOAD TENANT DOCUMENT
+====================================================== */
 
 export async function uploadTenantDocumentService({
   tenantId,
   ownerId,
-  type,
-  side,
+  documentType,
+  documentSide,
   file,
 }) {
+  /* ----------------------------------------------------
+     VERIFY TENANT OWNERSHIP
+  ---------------------------------------------------- */
+
   const tenant =
     await findTenantForDocument(
       db,
       tenantId,
       ownerId
     );
+
 
   if (!tenant) {
     throw new Error(
@@ -160,25 +188,43 @@ export async function uploadTenantDocumentService({
   }
 
 
-  /*
-   * We allow document maintenance
-   * even for archived tenants.
-   *
-   * Example:
-   * owner may need historical
-   * records after tenant leaves.
-   */
-
+  /* ----------------------------------------------------
+     NORMALIZE DOCUMENT SIDE
+  ---------------------------------------------------- */
 
   const normalizedSide =
-    type === "AADHAAR"
-      ? side
+    documentType ===
+    "AADHAAR"
+      ? documentSide
       : null;
 
+
+  /*
+   * Aadhaar must always have
+   * FRONT or BACK.
+   */
+  if (
+    documentType ===
+      "AADHAAR" &&
+    !normalizedSide
+  ) {
+    throw new Error(
+      "Document side is required for Aadhaar"
+    );
+  }
+
+
+  /* ----------------------------------------------------
+     GENERATE DOCUMENT ID
+  ---------------------------------------------------- */
 
   const documentId =
     crypto.randomUUID();
 
+
+  /* ----------------------------------------------------
+     PREPARE STORAGE PATH
+  ---------------------------------------------------- */
 
   const cleanFileName =
     sanitizeFileName(
@@ -188,7 +234,7 @@ export async function uploadTenantDocumentService({
 
   const folder =
     buildStorageFolder(
-      type,
+      documentType,
       normalizedSide
     );
 
@@ -197,8 +243,13 @@ export async function uploadTenantDocumentService({
     `${ownerId}/${tenantId}/${folder}/${documentId}-${cleanFileName}`;
 
 
+  /* ----------------------------------------------------
+     FILE → BUFFER
+  ---------------------------------------------------- */
+
   const arrayBuffer =
     await file.arrayBuffer();
+
 
   const buffer =
     Buffer.from(
@@ -212,9 +263,10 @@ export async function uploadTenantDocumentService({
     );
 
 
-  /*
-   * Upload new object first.
-   */
+  /* ----------------------------------------------------
+     UPLOAD TO PRIVATE SUPABASE STORAGE
+  ---------------------------------------------------- */
+
   const {
     error: uploadError,
   } =
@@ -238,25 +290,33 @@ export async function uploadTenantDocumentService({
       uploadError
     );
 
+
     throw new Error(
       `Failed to upload document: ${uploadError.message}`
     );
   }
 
 
+  /* ----------------------------------------------------
+     CREATE DATABASE RECORD
+  ---------------------------------------------------- */
+
   try {
     const document =
       await db.transaction(
         async (tx) => {
+
           /*
-           * Only one ACTIVE Aadhaar
-           * FRONT and one ACTIVE BACK.
+           * Aadhaar FRONT / BACK each
+           * support only one ACTIVE
+           * document.
            *
-           * Preserve previous row/file
-           * as archived history.
+           * Re-upload archives the
+           * previous active side.
            */
           if (
-            type === "AADHAAR"
+            documentType ===
+            "AADHAAR"
           ) {
             const existing =
               await findActiveAadhaarSide(
@@ -264,6 +324,7 @@ export async function uploadTenantDocumentService({
                 tenantId,
                 normalizedSide
               );
+
 
             if (existing) {
               await archiveTenantDocument(
@@ -282,9 +343,9 @@ export async function uploadTenantDocumentService({
 
               tenantId,
 
-              type,
+              documentType,
 
-              side:
+              documentSide:
                 normalizedSide,
 
               storagePath,
@@ -297,11 +358,19 @@ export async function uploadTenantDocumentService({
       );
 
 
+    /* --------------------------------------------------
+       CREATE SIGNED URL
+    -------------------------------------------------- */
+
     const signedUrl =
       await createSignedUrl(
         document.storagePath
       );
 
+
+    /* --------------------------------------------------
+       API RESPONSE
+    -------------------------------------------------- */
 
     return {
       id:
@@ -310,29 +379,36 @@ export async function uploadTenantDocumentService({
       tenantId:
         document.tenantId,
 
-      type:
-        document.type,
+      documentType:
+        document.documentType,
 
-      side:
-        document.side,
+      documentSide:
+        document.documentSide,
 
-      fileUrl:
-        signedUrl,
+      storagePath:
+        document.storagePath,
+
+      signedUrl,
 
       status:
         document.status,
 
       createdAt:
         document.createdAt,
+
+      updatedAt:
+        document.updatedAt,
     };
+
   } catch (error) {
     /*
-     * DB operation failed after
-     * new Storage upload.
+     * Database operation failed after
+     * Storage upload.
      *
-     * Remove only the NEW orphaned
-     * Storage object.
+     * Remove only the newly uploaded
+     * object to avoid an orphaned file.
      */
+
     const {
       error:
         cleanupError,
@@ -345,6 +421,7 @@ export async function uploadTenantDocumentService({
           storagePath,
         ]);
 
+
     if (cleanupError) {
       console.error(
         "Storage cleanup error:",
@@ -352,16 +429,25 @@ export async function uploadTenantDocumentService({
       );
     }
 
+
     throw error;
   }
 }
 
+
+/* ======================================================
+   GET TENANT DOCUMENTS
+====================================================== */
 
 export async function getTenantDocumentsService(
   tenantId,
   ownerId,
   includeArchived = false
 ) {
+  /* ----------------------------------------------------
+     VERIFY TENANT OWNERSHIP
+  ---------------------------------------------------- */
+
   const tenant =
     await findTenantForDocument(
       db,
@@ -369,12 +455,17 @@ export async function getTenantDocumentsService(
       ownerId
     );
 
+
   if (!tenant) {
     throw new Error(
       "Tenant not found"
     );
   }
 
+
+  /* ----------------------------------------------------
+     FETCH DOCUMENT RECORDS
+  ---------------------------------------------------- */
 
   const documents =
     includeArchived
@@ -388,34 +479,41 @@ export async function getTenantDocumentsService(
         );
 
 
+  /* ----------------------------------------------------
+     CREATE SIGNED URL FOR EACH DOCUMENT
+  ---------------------------------------------------- */
+
   const result =
     await Promise.all(
       documents.map(
         async (document) => {
+
           const signedUrl =
             await createSignedUrl(
               document.storagePath
             );
 
+
           return {
             id:
               document.id,
 
-            type:
-              document.type,
+            tenantId:
+              document.tenantId,
 
-            side:
-              document.side,
+            documentType:
+              document.documentType,
 
-            fileUrl:
-              signedUrl,
+            documentSide:
+              document.documentSide,
+
+            storagePath:
+              document.storagePath,
+
+            signedUrl,
 
             status:
               document.status,
-
-            archivedAt:
-              document.archivedAt ??
-              null,
 
             createdAt:
               document.createdAt,
@@ -432,11 +530,19 @@ export async function getTenantDocumentsService(
 }
 
 
+/* ======================================================
+   ARCHIVE TENANT DOCUMENT
+====================================================== */
+
 export async function archiveTenantDocumentService(
   tenantId,
   documentId,
   ownerId
 ) {
+  /* ----------------------------------------------------
+     VERIFY TENANT OWNERSHIP
+  ---------------------------------------------------- */
+
   const tenant =
     await findTenantForDocument(
       db,
@@ -444,12 +550,17 @@ export async function archiveTenantDocumentService(
       ownerId
     );
 
+
   if (!tenant) {
     throw new Error(
       "Tenant not found"
     );
   }
 
+
+  /* ----------------------------------------------------
+     FIND DOCUMENT
+  ---------------------------------------------------- */
 
   const document =
     await findDocumentById(
@@ -466,6 +577,10 @@ export async function archiveTenantDocumentService(
   }
 
 
+  /* ----------------------------------------------------
+     PREVENT DOUBLE ARCHIVE
+  ---------------------------------------------------- */
+
   if (
     document.status ===
     "ARCHIVED"
@@ -476,28 +591,44 @@ export async function archiveTenantDocumentService(
   }
 
 
-  await archiveTenantDocument(
-    db,
-    documentId
-  );
+  /* ----------------------------------------------------
+     SOFT ARCHIVE
+  ---------------------------------------------------- */
+
+  const archivedDocument =
+    await archiveTenantDocument(
+      db,
+      documentId
+    );
 
 
   /*
    * IMPORTANT:
    *
-   * Do NOT remove the Supabase
-   * object here.
+   * Do NOT remove the Storage object.
    *
-   * Historical document records
-   * are intentionally preserved.
+   * Historical document records and
+   * their Storage objects are preserved.
    */
 
 
   return {
     id:
-      documentId,
+      archivedDocument.id,
+
+    tenantId:
+      archivedDocument.tenantId,
+
+    documentType:
+      archivedDocument.documentType,
+
+    documentSide:
+      archivedDocument.documentSide,
 
     status:
-      "ARCHIVED",
+      archivedDocument.status,
+
+    updatedAt:
+      archivedDocument.updatedAt,
   };
 }

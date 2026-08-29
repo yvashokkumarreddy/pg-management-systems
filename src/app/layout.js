@@ -1,6 +1,8 @@
+import "./globals.css";
+
 export const metadata = {
   title: "PG Management System",
-  description: "PG Management System"
+  description: "PG owner management workspace",
 };
 
 export default function RootLayout({ children }) {

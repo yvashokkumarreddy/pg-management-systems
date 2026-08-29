@@ -56,7 +56,7 @@ export async function PATCH(
         {
           success: false,
           message:
-            "Validation failed",
+            validation.errors.file,
           errors:
             validation.errors,
         },

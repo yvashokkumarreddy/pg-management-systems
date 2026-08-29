@@ -65,13 +65,17 @@ function calculateBillStatus({
 export async function createPaymentService(
   data
 ) {
+  console.log(
+    "Creating payment with data:",
+    data
+  );
   const tenant =
     await findTenantForPayment(
       db,
       data.tenantId,
       data.ownerId
     );
-
+console.log("Tenant found:", tenant,data.tenantId,data.ownerId);
   if (!tenant) {
     throw new Error(
       "Tenant not found"

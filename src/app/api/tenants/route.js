@@ -9,6 +9,8 @@ import { getCurrentOwner } from "@/modules/auth/auth.service";
 export async function POST(request) {
   try {
     const body = await request.json();
+    const { ownerId } =
+  await getCurrentOwner();
 
     const validation =
       validateCreateTenant(body);
@@ -17,7 +19,7 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
-          message: "Validation failed",
+          message: validation.errors.file,
           errors: validation.errors,
         },
         { status: 400 }
@@ -25,7 +27,10 @@ export async function POST(request) {
     }
 
     const result =
-      await createTenantService(body);
+  await createTenantService({
+    ownerId,
+    ...body,
+  });
 
     return NextResponse.json(
       {

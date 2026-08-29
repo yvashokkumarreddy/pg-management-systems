@@ -5,7 +5,10 @@ import {
 import {
   getTenantPaymentsService,
 } from "@/modules/payments/payment.service";
-import { getCurrentOwner } from "@/modules/auth/auth.service";
+
+import {
+  getCurrentOwner,
+} from "@/modules/auth/auth.service";
 
 
 export async function GET(
@@ -17,21 +20,11 @@ export async function GET(
       tenantId,
     } = await params;
 
-    const { ownerId } =
-  await getCurrentOwner();
 
-    if (!ownerId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Owner ID is required",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
+    const {
+      ownerId,
+    } = await getCurrentOwner();
+
 
     const payments =
       await getTenantPaymentsService(
@@ -39,21 +32,28 @@ export async function GET(
         ownerId
       );
 
+
     return NextResponse.json({
       success: true,
       data: payments,
     });
+
   } catch (error) {
     console.error(
       "Get tenant payments error:",
       error
     );
 
+
     const status =
       error.message ===
       "Tenant not found"
         ? 404
-        : 500;
+        : error.message ===
+            "Unauthorized"
+          ? 401
+          : 500;
+
 
     return NextResponse.json(
       {

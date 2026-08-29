@@ -1,9 +1,11 @@
 import {
   pgTable,
-  varchar,
-  timestamp,
   pgEnum,
-  index,
+  uuid,
+  varchar,
+  text,
+  timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants.js";
@@ -40,42 +42,29 @@ export const documentStatusEnum = pgEnum(
 export const tenantDocuments = pgTable(
   "tenant_documents",
   {
-    id: varchar("id", {
-      length: 36,
-    }).primaryKey(),
+    id: uuid("id")
+      .defaultRandom()
+      .primaryKey(),
 
-    tenantId: varchar("tenant_id", {
-      length: 36,
-    })
+    tenantId: varchar("tenant_id")
       .notNull()
-      .references(() => tenants.id, {
-        onDelete: "cascade",
-      }),
+      .references(
+        () => tenants.id,
+        {
+          onDelete: "restrict",
+        }
+      ),
 
-    type: documentTypeEnum(
+    documentType: documentTypeEnum(
       "type"
     ).notNull(),
 
-    /*
-     * Aadhaar:
-     * FRONT / BACK
-     *
-     * PHOTO / OTHER:
-     * null
-     */
-    side: documentSideEnum(
+    documentSide: documentSideEnum(
       "side"
     ),
 
-    /*
-     * Store private Supabase
-     * object path, NOT signed URL.
-     */
-    storagePath: varchar(
-      "storage_path",
-      {
-        length: 1000,
-      }
+    storagePath: text(
+      "storage_path"
     ).notNull(),
 
     status: documentStatusEnum(
@@ -83,13 +72,6 @@ export const tenantDocuments = pgTable(
     )
       .notNull()
       .default("ACTIVE"),
-
-    archivedAt: timestamp(
-      "archived_at",
-      {
-        withTimezone: true,
-      }
-    ),
 
     createdAt: timestamp(
       "created_at",
@@ -109,24 +91,16 @@ export const tenantDocuments = pgTable(
       .notNull()
       .defaultNow(),
   },
+
   (table) => ({
-    tenantIdx: index(
-      "tenant_documents_tenant_idx"
-    ).on(
-      table.tenantId
-    ),
-
-    tenantTypeIdx: index(
-      "tenant_documents_tenant_type_idx"
-    ).on(
-      table.tenantId,
-      table.type
-    ),
-
-    statusIdx: index(
-      "tenant_documents_status_idx"
-    ).on(
-      table.status
-    ),
+    tenantDocumentLookupIdx:
+      uniqueIndex(
+        "tenant_documents_tenant_type_side_status_idx"
+      ).on(
+        table.tenantId,
+        table.documentType,
+        table.documentSide,
+        table.status
+      ),
   })
 );

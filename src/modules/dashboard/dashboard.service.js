@@ -8,6 +8,7 @@ import {
   findDashboardRentBills,
   findDashboardRooms,
   findDashboardTenants,
+  findPgProfileForDashboard,
 } from "./dashboard.repository.js";
 
 
@@ -161,6 +162,7 @@ export async function getDashboardService(
     tenants,
     rentBills,
     payments,
+    property,
   ] = await Promise.all([
     findDashboardRooms(
       db,
@@ -183,6 +185,11 @@ export async function getDashboardService(
     ),
 
     findDashboardPayments(
+      db,
+      ownerId
+    ),
+
+    findPgProfileForDashboard(
       db,
       ownerId
     ),
@@ -554,6 +561,12 @@ export async function getDashboardService(
    */
 
   return {
+    property: property
+    ? {
+        pgName: property.pgName,
+        address: property.address,
+      }
+    : null,
   rooms: {
     total:
       totalRooms,

@@ -10,7 +10,10 @@ import {
 import {
   validateDocumentUpload,
 } from "@/modules/documents/document.validation";
-import { getCurrentOwner } from "@/modules/auth/auth.service";
+
+import {
+  getCurrentOwner,
+} from "@/modules/auth/auth.service";
 
 
 export async function POST(
@@ -20,48 +23,46 @@ export async function POST(
   try {
     const {
       tenantId,
+    } = await params;
+
+
+    const {
+      ownerId,
     } =
-      await params;
-
-
-    const { ownerId } =
-  await getCurrentOwner();
-
-
-    if (!ownerId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Owner ID is required",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
+      await getCurrentOwner();
 
 
     const formData =
       await request.formData();
 
 
-    const type =
+    const documentTypeValue =
       formData.get(
-        "type"
+        "documentType"
       );
 
 
-    const sideValue =
+    const documentSideValue =
       formData.get(
-        "side"
+        "documentSide"
       );
 
 
-    const side =
-      typeof sideValue === "string" &&
-      sideValue.trim()
-        ? sideValue
+    const documentType =
+      typeof documentTypeValue ===
+        "string" &&
+      documentTypeValue.trim()
+        ? documentTypeValue
+            .trim()
+            .toUpperCase()
+        : null;
+
+
+    const documentSide =
+      typeof documentSideValue ===
+        "string" &&
+      documentSideValue.trim()
+        ? documentSideValue
             .trim()
             .toUpperCase()
         : null;
@@ -73,25 +74,10 @@ export async function POST(
       );
 
 
-    console.log(
-      "Form data received:",
-      {
-        type,
-        side,
-        fileName:
-          file?.name,
-        fileType:
-          file?.type,
-        fileSize:
-          file?.size,
-      }
-    );
-
-
     const validation =
       validateDocumentUpload({
-        type,
-        side,
+        documentType,
+        documentSide,
         file,
       });
 
@@ -102,8 +88,9 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
+
           message:
-            "Validation failed",
+            validation.errors.file,
 
           errors:
             validation.errors,
@@ -119,8 +106,8 @@ export async function POST(
       await uploadTenantDocumentService({
         tenantId,
         ownerId,
-        type,
-        side,
+        documentType,
+        documentSide,
         file,
       });
 
@@ -139,6 +126,7 @@ export async function POST(
         status: 201,
       }
     );
+
   } catch (error) {
     console.error(
       "Upload tenant document error:",
@@ -148,8 +136,11 @@ export async function POST(
 
     const status =
       error.message ===
-        "Tenant not found"
+      "Tenant not found"
         ? 404
+        : error.message ===
+          "Unauthorized"
+        ? 401
         : 400;
 
 
@@ -176,25 +167,21 @@ export async function GET(
   try {
     const {
       tenantId,
+    } = await params;
+
+
+    const {
+      searchParams,
     } =
-      await params;
-
-
-    const { ownerId } =
-  await getCurrentOwner();
-
-    if (!ownerId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Owner ID is required",
-        },
-        {
-          status: 400,
-        }
+      new URL(
+        request.url
       );
-    }
+
+
+    const {
+      ownerId,
+    } =
+      await getCurrentOwner();
 
 
     const includeArchived =
@@ -213,9 +200,11 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
+
       data:
         documents,
     });
+
   } catch (error) {
     console.error(
       "Get tenant documents error:",
@@ -225,8 +214,11 @@ export async function GET(
 
     const status =
       error.message ===
-        "Tenant not found"
+      "Tenant not found"
         ? 404
+        : error.message ===
+          "Unauthorized"
+        ? 401
         : 500;
 
 

@@ -10,6 +10,10 @@ import {
 } from "@/db/schema";
 
 
+/* ======================================================
+   FIND TENANT FOR DOCUMENT OPERATIONS
+====================================================== */
+
 export async function findTenantForDocument(
   dbClient,
   tenantId,
@@ -49,6 +53,10 @@ export async function findTenantForDocument(
 }
 
 
+/* ======================================================
+   CREATE DOCUMENT
+====================================================== */
+
 export async function createTenantDocument(
   dbClient,
   data
@@ -61,9 +69,13 @@ export async function createTenantDocument(
       .values(data)
       .returning();
 
-  return result[0];
+  return result[0] ?? null;
 }
 
+
+/* ======================================================
+   FIND ACTIVE DOCUMENTS FOR TENANT
+====================================================== */
 
 export async function findActiveDocumentsByTenant(
   dbClient,
@@ -77,11 +89,11 @@ export async function findActiveDocumentsByTenant(
       tenantId:
         tenantDocuments.tenantId,
 
-      type:
-        tenantDocuments.type,
+      documentType:
+        tenantDocuments.documentType,
 
-      side:
-        tenantDocuments.side,
+      documentSide:
+        tenantDocuments.documentSide,
 
       storagePath:
         tenantDocuments.storagePath,
@@ -118,6 +130,11 @@ export async function findActiveDocumentsByTenant(
 }
 
 
+/* ======================================================
+   FIND ALL DOCUMENTS FOR TENANT
+   ACTIVE + ARCHIVED
+====================================================== */
+
 export async function findAllDocumentsByTenant(
   dbClient,
   tenantId
@@ -130,20 +147,17 @@ export async function findAllDocumentsByTenant(
       tenantId:
         tenantDocuments.tenantId,
 
-      type:
-        tenantDocuments.type,
+      documentType:
+        tenantDocuments.documentType,
 
-      side:
-        tenantDocuments.side,
+      documentSide:
+        tenantDocuments.documentSide,
 
       storagePath:
         tenantDocuments.storagePath,
 
       status:
         tenantDocuments.status,
-
-      archivedAt:
-        tenantDocuments.archivedAt,
 
       createdAt:
         tenantDocuments.createdAt,
@@ -168,6 +182,10 @@ export async function findAllDocumentsByTenant(
 }
 
 
+/* ======================================================
+   FIND DOCUMENT BY ID
+====================================================== */
+
 export async function findDocumentById(
   dbClient,
   documentId,
@@ -182,11 +200,11 @@ export async function findDocumentById(
         tenantId:
           tenantDocuments.tenantId,
 
-        type:
-          tenantDocuments.type,
+        documentType:
+          tenantDocuments.documentType,
 
-        side:
-          tenantDocuments.side,
+        documentSide:
+          tenantDocuments.documentSide,
 
         storagePath:
           tenantDocuments.storagePath,
@@ -194,11 +212,11 @@ export async function findDocumentById(
         status:
           tenantDocuments.status,
 
-        archivedAt:
-          tenantDocuments.archivedAt,
-
         createdAt:
           tenantDocuments.createdAt,
+
+        updatedAt:
+          tenantDocuments.updatedAt,
       })
       .from(
         tenantDocuments
@@ -221,6 +239,14 @@ export async function findDocumentById(
 }
 
 
+/* ======================================================
+   FIND ACTIVE AADHAAR SIDE
+
+   Used when replacing:
+   - AADHAAR FRONT
+   - AADHAAR BACK
+====================================================== */
+
 export async function findActiveAadhaarSide(
   dbClient,
   tenantId,
@@ -232,8 +258,20 @@ export async function findActiveAadhaarSide(
         id:
           tenantDocuments.id,
 
+        tenantId:
+          tenantDocuments.tenantId,
+
+        documentType:
+          tenantDocuments.documentType,
+
+        documentSide:
+          tenantDocuments.documentSide,
+
         storagePath:
           tenantDocuments.storagePath,
+
+        status:
+          tenantDocuments.status,
       })
       .from(
         tenantDocuments
@@ -244,14 +282,17 @@ export async function findActiveAadhaarSide(
             tenantDocuments.tenantId,
             tenantId
           ),
+
           eq(
-            tenantDocuments.type,
+            tenantDocuments.documentType,
             "AADHAAR"
           ),
+
           eq(
-            tenantDocuments.side,
+            tenantDocuments.documentSide,
             side
           ),
+
           eq(
             tenantDocuments.status,
             "ACTIVE"
@@ -264,13 +305,14 @@ export async function findActiveAadhaarSide(
 }
 
 
+/* ======================================================
+   ARCHIVE DOCUMENT
+====================================================== */
+
 export async function archiveTenantDocument(
   dbClient,
   documentId
 ) {
-  const now =
-    new Date();
-
   const result =
     await dbClient
       .update(
@@ -280,11 +322,8 @@ export async function archiveTenantDocument(
         status:
           "ARCHIVED",
 
-        archivedAt:
-          now,
-
         updatedAt:
-          now,
+          new Date(),
       })
       .where(
         eq(

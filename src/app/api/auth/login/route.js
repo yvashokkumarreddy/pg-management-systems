@@ -40,7 +40,7 @@ export async function POST(
         {
           success: false,
           message:
-            "Validation failed",
+            validation.errors.file,
           errors:
             validation.errors,
         },

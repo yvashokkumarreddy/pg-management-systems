@@ -1,94 +1,130 @@
 export function validateCreateTenant(data) {
   const errors = {};
 
-  if (!data.fullName || typeof data.fullName !== "string") {
-    errors.fullName = "Full name is required";
+  if (
+    !data.fullName ||
+    !String(data.fullName).trim()
+  ) {
+    errors.fullName =
+      "Full name is required";
   }
 
-  if (!data.mobile || typeof data.mobile !== "string") {
-    errors.mobile = "Mobile number is required";
+  if (
+    !data.mobile ||
+    !String(data.mobile).trim()
+  ) {
+    errors.mobile =
+      "Mobile number is required";
   }
 
-  if (!data.ownerId || typeof data.ownerId !== "string") {
-    errors.ownerId = "Owner ID is required";
+  if (!data.roomId) {
+    errors.roomId =
+      "Room is required";
   }
 
   if (!data.dateOfJoining) {
-    errors.dateOfJoining = "Date of joining is required";
-  } else if (Number.isNaN(new Date(data.dateOfJoining).getTime())) {
-    errors.dateOfJoining = "Invalid date of joining";
+    errors.dateOfJoining =
+      "Date of joining is required";
   }
 
   if (
     data.monthlyRent === undefined ||
     data.monthlyRent === null ||
-    Number.isNaN(Number(data.monthlyRent))
+    data.monthlyRent === "" ||
+    Number(data.monthlyRent) <= 0
   ) {
-    errors.monthlyRent = "Valid monthly rent is required";
+    errors.monthlyRent =
+      "Monthly rent must be greater than 0";
   }
 
-  if (!data.roomId || typeof data.roomId !== "string") {
-    errors.roomId = "Room ID is required";
+  if (
+    data.advanceAmount !== undefined &&
+    data.advanceAmount !== null &&
+    data.advanceAmount !== "" &&
+    Number(data.advanceAmount) < 0
+  ) {
+    errors.advanceAmount =
+      "Deposit received cannot be negative";
   }
 
   return {
-    isValid: Object.keys(errors).length === 0,
+    isValid:
+      Object.keys(errors).length === 0,
     errors,
   };
 }
+
 
 export function validateUpdateTenant(data) {
   const errors = {};
 
   if (
     data.fullName !== undefined &&
-    (typeof data.fullName !== "string" || !data.fullName.trim())
+    !String(data.fullName).trim()
   ) {
-    errors.fullName = "Full name must be valid";
+    errors.fullName =
+      "Full name cannot be empty";
   }
 
   if (
     data.mobile !== undefined &&
-    (typeof data.mobile !== "string" || !data.mobile.trim())
+    !String(data.mobile).trim()
   ) {
-    errors.mobile = "Mobile number must be valid";
+    errors.mobile =
+      "Mobile number cannot be empty";
+  }
+
+  if (
+    data.roomId !== undefined &&
+    !data.roomId
+  ) {
+    errors.roomId =
+      "Room is required";
   }
 
   if (
     data.dateOfJoining !== undefined &&
-    Number.isNaN(new Date(data.dateOfJoining).getTime())
+    !data.dateOfJoining
   ) {
-    errors.dateOfJoining = "Invalid date of joining";
+    errors.dateOfJoining =
+      "Date of joining is required";
   }
 
   if (
     data.monthlyRent !== undefined &&
-    (
-      Number.isNaN(Number(data.monthlyRent)) ||
-      Number(data.monthlyRent) <= 0
-    )
+    Number(data.monthlyRent) <= 0
   ) {
-    errors.monthlyRent = "Monthly rent must be greater than 0";
+    errors.monthlyRent =
+      "Monthly rent must be greater than 0";
   }
 
-  for (const field of [
-    "advanceAmount",
-    "maintenanceAmount",
-    "refundableAmount",
-  ]) {
-    if (
-      data[field] !== undefined &&
-      (
-        Number.isNaN(Number(data[field])) ||
-        Number(data[field]) < 0
-      )
-    ) {
-      errors[field] = `${field} must be 0 or greater`;
-    }
+  if (
+    data.advanceAmount !== undefined &&
+    Number(data.advanceAmount) < 0
+  ) {
+    errors.advanceAmount =
+      "Advance amount cannot be negative";
+  }
+
+  if (
+    data.maintenanceAmount !== undefined &&
+    Number(data.maintenanceAmount) < 0
+  ) {
+    errors.maintenanceAmount =
+      "Maintenance amount cannot be negative";
+  }
+
+  if (
+    data.refundableAmount !== undefined &&
+    Number(data.refundableAmount) < 0
+  ) {
+    errors.refundableAmount =
+      "Refundable amount cannot be negative";
   }
 
   return {
-    isValid: Object.keys(errors).length === 0,
+    isValid:
+      Object.keys(errors).length === 0,
     errors,
   };
 }

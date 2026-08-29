@@ -19,6 +19,8 @@ export async function POST(
   try {
     const body =
       await request.json();
+    const { ownerId } =
+  await getCurrentOwner();
 
     const validation =
       validateCreatePayment(
@@ -30,7 +32,7 @@ export async function POST(
         {
           success: false,
           message:
-            "Validation failed",
+            validation.errors.file,
           errors:
             validation.errors,
         },
@@ -41,8 +43,10 @@ export async function POST(
     }
 
     const result =
-      await createPaymentService(
-        body
+      await createPaymentService({
+        ownerId,
+        ...body
+      }
       );
 
     return NextResponse.json(

@@ -1,186 +1,353 @@
-import { NextResponse } from "next/server";
+import {
+  NextResponse,
+} from "next/server";
 
 import {
   getTenantByIdService,
   updateTenantService,
   archiveTenantService,
+  restoreTenantService,
 } from "@/modules/tenants/tenant.service";
 
 import {
   validateUpdateTenant,
 } from "@/modules/tenants/tenant.validation";
-import { getCurrentOwner } from "@/modules/auth/auth.service";
 
-export async function GET(request, { params }) {
+import {
+  getCurrentOwner,
+  UnauthorizedError,
+} from "@/modules/auth/auth.service";
+
+
+/* ======================================================
+   GET TENANT
+====================================================== */
+
+export async function GET(
+  request,
+  { params }
+) {
   try {
-    const { tenantId } = await params;
-    console.log("Tenant ID:", tenantId);
+    const { tenantId } =
+      await params;
+
     const { ownerId } =
-  await getCurrentOwner();
+      await getCurrentOwner();
 
-    if (!ownerId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Owner ID is required",
-        },
-        { status: 400 }
+
+    const tenant =
+      await getTenantByIdService(
+        tenantId,
+        ownerId
       );
-    }
 
-    const tenant = await getTenantByIdService(
-      tenantId,
-      ownerId
-    );
 
     if (!tenant) {
       return NextResponse.json(
         {
           success: false,
-          message: "Tenant not found",
+          message:
+            "Tenant not found",
         },
-        { status: 404 }
+        {
+          status: 404,
+        }
       );
     }
+
 
     return NextResponse.json({
       success: true,
       data: tenant,
     });
   } catch (error) {
-    console.error("Get tenant error:", error);
+    console.error(
+      "Get tenant error:",
+      error
+    );
+
+
+    if (
+      error instanceof
+      UnauthorizedError
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            error.message,
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
 
     return NextResponse.json(
       {
         success: false,
+
         message:
           error.message ||
           "Failed to get tenant",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
 
-export async function PATCH(request, { params }) {
+
+/* ======================================================
+   PATCH TENANT
+====================================================== */
+
+export async function PATCH(
+  request,
+  { params }
+) {
   try {
-    const { tenantId } = await params;
+    const { tenantId } =
+      await params;
 
     const { ownerId } =
-  await getCurrentOwner();
+      await getCurrentOwner();
 
-    if (!ownerId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Owner ID is required",
-        },
-        { status: 400 }
-      );
+    const body =
+      await request.json();
+
+
+    /* ==================================================
+       RESTORE ARCHIVED TENANT
+    ================================================== */
+
+    if (
+      body.status ===
+        "ACTIVE" &&
+      Object.keys(body).length ===
+        1
+    ) {
+      const tenant =
+        await restoreTenantService(
+          tenantId,
+          ownerId
+        );
+
+
+      return NextResponse.json({
+        success: true,
+
+        message:
+          "Tenant activated successfully",
+
+        data: tenant,
+      });
     }
 
-    const body = await request.json();
+
+    /* ==================================================
+       NORMAL UPDATE
+    ================================================== */
 
     const validation =
-      validateUpdateTenant(body);
+      validateUpdateTenant(
+        body
+      );
 
-    if (!validation.isValid) {
+
+    if (
+      !validation.isValid
+    ) {
       return NextResponse.json(
         {
           success: false,
-          message: "Validation failed",
-          errors: validation.errors,
+
+          message:
+            validation.errors.file,
+
+          errors:
+            validation.errors,
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    const result = await updateTenantService(
-      tenantId,
-      ownerId,
-      body
-    );
+
+    const result =
+      await updateTenantService(
+        tenantId,
+        ownerId,
+        body
+      );
+
 
     return NextResponse.json({
       success: true,
-      message: "Tenant updated successfully",
+
+      message:
+        "Tenant updated successfully",
+
       data: result,
     });
   } catch (error) {
-    console.error("Update tenant error:", error);
+    console.error(
+      "Update tenant error:",
+      error
+    );
+
+
+    if (
+      error instanceof
+      UnauthorizedError
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            error.message,
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+
+    const knownBadRequestMessages =
+      [
+        "Archived tenant cannot be updated",
+        "Only archived tenants can be activated",
+        "Room not found",
+        "Assigned room not found",
+        "Assigned room is archived",
+        "Room does not belong to this owner",
+        "Room has no available bed",
+        "Assigned room has no available bed",
+        "Tenant has no assigned room",
+        "Cannot assign tenant to an archived room",
+      ];
+
 
     const status =
-      error.message === "Tenant not found"
+      error.message ===
+      "Tenant not found"
         ? 404
-        : error.message.includes("Room") ||
-          error.message.includes("Archived")
-        ? 400
-        : 500;
+        : knownBadRequestMessages.includes(
+              error.message
+            )
+          ? 400
+          : 500;
+
 
     return NextResponse.json(
       {
         success: false,
+
         message:
           error.message ||
           "Failed to update tenant",
       },
-      { status }
+      {
+        status,
+      }
     );
   }
 }
 
-export async function DELETE(request, { params }) {
+
+/* ======================================================
+   ARCHIVE TENANT
+====================================================== */
+
+export async function DELETE(
+  request,
+  { params }
+) {
   try {
-    const { tenantId } = await params;
+    const { tenantId } =
+      await params;
 
     const { ownerId } =
-  await getCurrentOwner();
+      await getCurrentOwner();
 
-    if (!ownerId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Owner ID is required",
-        },
-        { status: 400 }
-      );
-    }
 
     let body = {};
 
+
     try {
-      body = await request.json();
+      body =
+        await request.json();
     } catch {
-      // Leaving date is optional.
+      /*
+       * Leaving date is optional.
+       */
     }
 
-    const tenant = await archiveTenantService(
-      tenantId,
-      ownerId,
-      body.dateOfLeaving
-    );
+
+    const tenant =
+      await archiveTenantService(
+        tenantId,
+        ownerId,
+        body.dateOfLeaving
+      );
+
 
     return NextResponse.json({
       success: true,
-      message: "Tenant archived successfully",
+
+      message:
+        "Tenant archived successfully",
+
       data: tenant,
     });
   } catch (error) {
-    console.error("Archive tenant error:", error);
+    console.error(
+      "Archive tenant error:",
+      error
+    );
+
+
+    if (
+      error instanceof
+      UnauthorizedError
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+
+          message:
+            error.message,
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
 
     const status =
-      error.message === "Tenant not found"
+      error.message ===
+      "Tenant not found"
         ? 404
         : 400;
+
 
     return NextResponse.json(
       {
         success: false,
+
         message:
           error.message ||
           "Failed to archive tenant",
       },
-      { status }
+      {
+        status,
+      }
     );
   }
 }

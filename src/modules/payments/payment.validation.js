@@ -9,24 +9,7 @@ const VALID_PAYMENT_MODES = [
 export function validateCreatePayment(data) {
   const errors = {};
 
-  if (
-    !data.ownerId ||
-    typeof data.ownerId !== "string"
-  ) {
-    errors.ownerId = "Owner ID is required";
-  }
-
-  if (
-    !data.tenantId ||
-    typeof data.tenantId !== "string"
-  ) {
-    errors.tenantId = "Tenant ID is required";
-  }
-
-  if (
-    !data.rentBillId ||
-    typeof data.rentBillId !== "string"
-  ) {
+  if (!data.rentBillId) {
     errors.rentBillId =
       "Rent bill ID is required";
   }
@@ -34,47 +17,31 @@ export function validateCreatePayment(data) {
   if (
     data.amount === undefined ||
     data.amount === null ||
-    Number.isNaN(Number(data.amount)) ||
+    data.amount === "" ||
     Number(data.amount) <= 0
   ) {
     errors.amount =
       "Payment amount must be greater than 0";
   }
 
-  if (!data.paymentDate) {
-    errors.paymentDate =
-      "Payment date is required";
-  } else {
-    const paymentDate =
-      new Date(data.paymentDate);
-
-    if (
-      Number.isNaN(
-        paymentDate.getTime()
-      )
-    ) {
-      errors.paymentDate =
-        "Invalid payment date";
-    }
-  }
+  const validModes = [
+    "CASH",
+    "UPI",
+    "BANK_TRANSFER",
+    "OTHER",
+  ];
 
   if (
     !data.mode ||
-    !VALID_PAYMENT_MODES.includes(
-      data.mode
-    )
+    !validModes.includes(data.mode)
   ) {
     errors.mode =
       "Payment mode must be CASH, UPI, BANK_TRANSFER, or OTHER";
   }
 
-  if (
-    data.notes !== undefined &&
-    data.notes !== null &&
-    typeof data.notes !== "string"
-  ) {
-    errors.notes =
-      "Notes must be valid";
+  if (!data.paymentDate) {
+    errors.paymentDate =
+      "Payment date is required";
   }
 
   return {

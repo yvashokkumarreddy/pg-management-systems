@@ -17,6 +17,13 @@ export async function findTenantForPayment(
   tenantId,
   ownerId
 ) {
+  console.log(
+    "Finding tenant for payment:",
+    {
+      tenantId,
+      ownerId,
+    }
+  );
   const result = await dbClient
     .select({
       id:

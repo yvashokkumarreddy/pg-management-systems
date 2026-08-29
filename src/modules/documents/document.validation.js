@@ -23,12 +23,6 @@ const ALLOWED_MIME_TYPES = [
   "application/pdf",
   "image/jpeg",
   "image/png",
-
-  /*
-   * Postman/Windows can send
-   * JPG files using this generic
-   * MIME type.
-   */
   "application/octet-stream",
 ];
 
@@ -38,45 +32,51 @@ const MAX_FILE_SIZE =
 
 
 export function validateDocumentUpload({
-  type,
-  side,
+  documentType,
+  documentSide,
   file,
 }) {
   const errors = {};
 
 
   if (
-    !type ||
-    !VALID_DOCUMENT_TYPES.includes(type)
+    !documentType ||
+    !VALID_DOCUMENT_TYPES.includes(
+      documentType
+    )
   ) {
-    errors.type =
+    errors.documentType =
       "Invalid document type";
   }
 
 
-  /*
-   * Aadhaar requires FRONT/BACK.
-   */
-  if (type === "AADHAAR") {
+  if (
+    documentType ===
+    "AADHAAR"
+  ) {
     if (
-      !side ||
-      !VALID_DOCUMENT_SIDES.includes(side)
+      !documentSide ||
+      !VALID_DOCUMENT_SIDES.includes(
+        documentSide
+      )
     ) {
-      errors.side =
+      errors.documentSide =
         "Aadhaar side must be FRONT or BACK";
     }
   }
 
 
   /*
-   * PHOTO/OTHER cannot have side.
+   * PHOTO and OTHER
+   * must not have a side.
    */
   if (
-    type &&
-    type !== "AADHAAR" &&
-    side
+    documentType &&
+    documentType !==
+      "AADHAAR" &&
+    documentSide
   ) {
-    errors.side =
+    errors.documentSide =
       "Document side is only allowed for Aadhaar";
   }
 
@@ -93,7 +93,8 @@ export function validateDocumentUpload({
 
 
   if (
-    typeof file.name !== "string"
+    typeof file.name !==
+    "string"
   ) {
     errors.file =
       "Invalid document file";

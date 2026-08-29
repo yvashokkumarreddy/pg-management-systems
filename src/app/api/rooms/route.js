@@ -8,12 +8,25 @@ import {
 import {
   validateCreateRoom,
 } from "@/modules/rooms/room.validation";
-import { getCurrentOwner } from "@/modules/auth/auth.service";
 
+import {
+  getCurrentOwner,
+  UnauthorizedError,
+} from "@/modules/auth/auth.service";
+
+
+/* ======================================================
+   POST /api/rooms
+   Create Room
+====================================================== */
 
 export async function POST(request) {
   try {
-    const body = await request.json();
+    const { ownerId } =
+      await getCurrentOwner();
+
+    const body =
+      await request.json();
 
     const validation =
       validateCreateRoom(body);
@@ -22,15 +35,27 @@ export async function POST(request) {
       return NextResponse.json(
         {
           success: false,
-          message: "Validation failed",
-          errors: validation.errors,
+          message:
+            validation.errors.file,
+          errors:
+            validation.errors,
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
     const room =
-      await createRoomService(body);
+      await createRoomService({
+        ownerId,
+        ...body,
+      });
+
+    console.log(
+      "Room created:",
+      room
+    );
 
     return NextResponse.json(
       {
@@ -39,13 +64,31 @@ export async function POST(request) {
           "Room created successfully",
         data: room,
       },
-      { status: 201 }
+      {
+        status: 201,
+      }
     );
   } catch (error) {
     console.error(
       "Create room error:",
       error
     );
+
+    if (
+      error instanceof
+      UnauthorizedError
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            error.message,
+        },
+        {
+          status: 401,
+        }
+      );
+    }
 
     let status = 500;
 
@@ -63,44 +106,72 @@ export async function POST(request) {
           error.message ||
           "Failed to create room",
       },
-      { status }
+      {
+        status,
+      }
     );
   }
 }
 
 
+/* ======================================================
+   GET /api/rooms
+
+   Default:
+   GET /api/rooms
+   -> Active rooms only
+
+   Include archived:
+   GET /api/rooms?includeArchived=true
+   -> Active + Archived rooms
+====================================================== */
+
 export async function GET(request) {
   try {
+    const { ownerId } =
+      await getCurrentOwner();
+
     const { searchParams } =
       new URL(request.url);
 
-    const { ownerId } =
-  await getCurrentOwner();
+    const includeArchived =
+      searchParams.get(
+        "includeArchived"
+      ) === "true";
 
-    const status =
-      searchParams.get("status") ||
-      "ACTIVE";
+    console.log(
+      "GET ROOMS ownerId:",
+      ownerId
+    );
 
-    if (!ownerId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Owner ID is required",
-        },
-        { status: 400 }
-      );
-    }
+    console.log(
+      "GET ROOMS includeArchived:",
+      includeArchived
+    );
 
+    /*
+     * IMPORTANT:
+     *
+     * ownerId remains the first argument.
+     * includeArchived is only an optional
+     * configuration value.
+     */
     const rooms =
       await getRoomsService(
         ownerId,
-        status
+        {
+          includeArchived,
+        }
       );
+
+    console.log(
+      "GET ROOMS result count:",
+      rooms?.length || 0
+    );
 
     return NextResponse.json({
       success: true,
-      data: rooms,
+      data: rooms || [],
     });
   } catch (error) {
     console.error(
@@ -108,14 +179,32 @@ export async function GET(request) {
       error
     );
 
+    if (
+      error instanceof
+      UnauthorizedError
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            error.message,
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,
         message:
           error.message ||
-          "Failed to get rooms",
+          "Failed to fetch rooms",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
