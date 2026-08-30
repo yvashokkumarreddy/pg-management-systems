@@ -11,6 +11,7 @@ import {
   findRentBillsByTenant,
   findTenantForRent,
   updateRentBillStatus,
+  findRentCollectionSummary,
 } from "./rent.repository.js";
 
 import {
@@ -82,33 +83,50 @@ export async function getRentBillsService(
     );
   }
 
-  /*
-   * First fetch everything.
-   *
-   * We refresh overdue statuses because
-   * there is intentionally no cron job yet.
-   */
-  const bills =
-    await findRentBillsByOwner(
+  const [
+    bills,
+    collectionSummary,
+  ] = await Promise.all([
+    findRentBillsByOwner(
       db,
       ownerId
-    );
+    ),
+
+    findRentCollectionSummary(
+      db,
+      ownerId
+    ),
+  ]);
 
   const refreshedBills =
     await refreshBillList(
       bills
     );
 
-  if (!status) {
-    return refreshedBills;
-  }
+  const filteredBills =
+    status
+      ? refreshedBills.filter(
+          (bill) =>
+            bill.status ===
+            status
+        )
+      : refreshedBills;
 
-  return refreshedBills.filter(
-    (bill) =>
-      bill.status === status
-  );
+  return {
+    bills:
+      filteredBills,
+
+    summary: {
+      collectedThisMonth:
+        collectionSummary
+          .collectedThisMonth,
+
+      lifetimeCollected:
+        collectionSummary
+          .lifetimeCollected,
+    },
+  };
 }
-
 
 export async function getRentBillByIdService(
   billId,

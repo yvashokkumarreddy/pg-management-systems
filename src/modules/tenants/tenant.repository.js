@@ -5,6 +5,8 @@ import {
   desc,
   inArray,
   asc,
+  lte,
+  gte,
 } from "drizzle-orm";
 
 import {
@@ -94,6 +96,74 @@ export async function createRentBill(
   return result[0];
 }
 
+/* ======================================================
+   FIND CURRENT RENT BILL
+====================================================== */
+
+export async function findCurrentRentBill(
+  dbClient,
+  tenantId,
+  currentDate = new Date()
+) {
+  const result =
+    await dbClient
+      .select()
+      .from(rentBills)
+      .where(
+        and(
+          eq(
+            rentBills.tenantId,
+            tenantId
+          ),
+          lte(
+            rentBills.billingPeriodStart,
+            currentDate
+          ),
+          gte(
+            rentBills.billingPeriodEnd,
+            currentDate
+          )
+        )
+      )
+      .orderBy(
+        desc(
+          rentBills.billingPeriodStart
+        )
+      )
+      .limit(1);
+
+  return result[0] ?? null;
+}
+
+
+/* ======================================================
+   UPDATE RENT BILL
+====================================================== */
+
+export async function updateRentBill(
+  dbClient,
+  rentBillId,
+  data
+) {
+  const result =
+    await dbClient
+      .update(rentBills)
+      .set({
+        ...data,
+
+        updatedAt:
+          new Date(),
+      })
+      .where(
+        eq(
+          rentBills.id,
+          rentBillId
+        )
+      )
+      .returning();
+
+  return result[0] ?? null;
+}
 
 export async function createTenantDeposit(
   dbClient,

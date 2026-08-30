@@ -12,6 +12,8 @@ import {
   updateTenantDeposit,
   archiveTenant,
   restoreTenant,
+  findCurrentRentBill,
+  updateRentBill,
 } from "./tenant.repository.js";
 
 import {
@@ -259,6 +261,10 @@ export async function getTenantByIdService(
    UPDATE TENANT
 ====================================================== */
 
+/* ======================================================
+   UPDATE TENANT
+====================================================== */
+
 export async function updateTenantService(
   tenantId,
   ownerId,
@@ -293,6 +299,19 @@ export async function updateTenantService(
       "Archived tenant cannot be updated"
     );
   }
+
+
+  /* ====================================================
+     CHECK WHETHER MONTHLY RENT ACTUALLY CHANGED
+  ==================================================== */
+
+  const monthlyRentChanged =
+    data.monthlyRent !==
+      undefined &&
+    Number(data.monthlyRent) !==
+      Number(
+        existingTenant.monthlyRent
+      );
 
 
   /* ====================================================
@@ -335,15 +354,6 @@ export async function updateTenantService(
     }
 
 
-    /*
-     * FIXED:
-     *
-     * Previous code was:
-     *
-     * await (db, data.roomId)
-     *
-     * which did not call anything.
-     */
     const occupiedBeds =
       await countOccupiedBedsByRoom(
         db,
@@ -364,6 +374,10 @@ export async function updateTenantService(
 
   return await db.transaction(
     async (tx) => {
+      /* ==================================================
+         TENANT UPDATE
+      ================================================== */
+
       const tenantUpdate =
         {};
 
@@ -443,6 +457,66 @@ export async function updateTenantService(
           : existingTenant;
 
 
+      /* ==================================================
+         UPDATE CURRENT RENT BILL WHEN RENT CHANGES
+
+         RULE:
+
+         amountPaid = 0
+           → current bill uses new rent
+
+         amountPaid > 0
+           → current bill stays unchanged
+
+         Future bills automatically use
+         tenant.monthlyRent.
+      ================================================== */
+
+      let rentBill =
+        null;
+
+
+      if (
+        monthlyRentChanged
+      ) {
+        const currentRentBill =
+          await findCurrentRentBill(
+            tx,
+            tenantId,
+            new Date()
+          );
+
+
+        if (
+          currentRentBill &&
+          Number(
+            currentRentBill.amountPaid
+          ) === 0
+        ) {
+          rentBill =
+            await updateRentBill(
+              tx,
+              currentRentBill.id,
+              {
+                amountDue:
+                  String(
+                    data.monthlyRent
+                  ),
+
+                balanceAmount:
+                  String(
+                    data.monthlyRent
+                  ),
+              }
+            );
+        }
+      }
+
+
+      /* ==================================================
+         DEPOSIT UPDATE
+      ================================================== */
+
       const depositUpdate =
         {};
 
@@ -501,6 +575,7 @@ export async function updateTenantService(
       return {
         tenant,
         deposit,
+        rentBill,
       };
     }
   );

@@ -12,6 +12,8 @@ import { getCurrentOwner } from "@/modules/auth/auth.service";
 
 export async function GET(request) {
   try {
+     const { searchParams } =
+      new URL(request.url);
     const { ownerId } =
   await getCurrentOwner();
 
@@ -41,7 +43,7 @@ export async function GET(request) {
       );
     }
 
-    const bills =
+    const result =
       await getRentBillsService(
         ownerId,
         status
@@ -49,7 +51,7 @@ export async function GET(request) {
 
     return NextResponse.json({
       success: true,
-      data: bills,
+      data: result,
     });
   } catch (error) {
     console.error(

@@ -2,14 +2,17 @@ import {
   and,
   desc,
   eq,
+  gte,
+  lt,
+  sql,
 } from "drizzle-orm";
 
 import {
   rentBills,
   rooms,
   tenants,
+  payments,
 } from "@/db/schema";
-
 
 export async function findTenantForRent(
   dbClient,
@@ -390,4 +393,113 @@ export async function findRentBillDetailsById(
     .limit(1);
 
   return result[0] ?? null;
+}
+
+export async function findRentCollectionSummary(
+  dbClient,
+  ownerId
+) {
+  const now =
+    new Date();
+
+  const monthStart =
+    new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      1
+    );
+
+  const nextMonthStart =
+    new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      1
+    );
+
+
+  /* ================================================
+     LIFETIME COLLECTED
+  ================================================ */
+
+  const lifetimeResult =
+    await dbClient
+      .select({
+        total: sql`
+          COALESCE(
+            SUM(${payments.amount}),
+            0
+          )
+        `,
+      })
+      .from(payments)
+      .innerJoin(
+        tenants,
+        eq(
+          payments.tenantId,
+          tenants.id
+        )
+      )
+      .where(
+        eq(
+          tenants.ownerId,
+          ownerId
+        )
+      );
+
+
+  /* ================================================
+     COLLECTED THIS MONTH
+  ================================================ */
+
+  const monthResult =
+    await dbClient
+      .select({
+        total: sql`
+          COALESCE(
+            SUM(${payments.amount}),
+            0
+          )
+        `,
+      })
+      .from(payments)
+      .innerJoin(
+        tenants,
+        eq(
+          payments.tenantId,
+          tenants.id
+        )
+      )
+      .where(
+        and(
+          eq(
+            tenants.ownerId,
+            ownerId
+          ),
+
+          gte(
+            payments.paymentDate,
+            monthStart
+          ),
+
+          lt(
+            payments.paymentDate,
+            nextMonthStart
+          )
+        )
+      );
+
+
+  return {
+    collectedThisMonth:
+      Number(
+        monthResult[0]?.total ||
+          0
+      ),
+
+    lifetimeCollected:
+      Number(
+        lifetimeResult[0]?.total ||
+          0
+      ),
+  };
 }
