@@ -139,15 +139,15 @@ export async function GET(request) {
         "includeArchived"
       ) === "true";
 
-    console.log(
-      "GET ROOMS ownerId:",
-      ownerId
-    );
+    // console.log(
+    //   "GET ROOMS ownerId:",
+    //   ownerId
+    // );
 
-    console.log(
-      "GET ROOMS includeArchived:",
-      includeArchived
-    );
+    // console.log(
+    //   "GET ROOMS includeArchived:",
+    //   includeArchived
+    // );
 
     /*
      * IMPORTANT:
@@ -164,10 +164,10 @@ export async function GET(request) {
         }
       );
 
-    console.log(
-      "GET ROOMS result count:",
-      rooms?.length || 0
-    );
+    // console.log(
+    //   "GET ROOMS result count:",
+    //   rooms?.length || 0
+    // );
 
     return NextResponse.json({
       success: true,

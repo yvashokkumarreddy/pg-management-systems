@@ -2,6 +2,7 @@ import {
   pgTable,
   varchar,
   timestamp,
+  date,
   decimal,
   pgEnum,
   index,
@@ -10,17 +11,22 @@ import {
 
 import { tenants } from "./tenants.js";
 
-export const rentStatusEnum = pgEnum("rent_status", [
-  "PENDING",
-  "PARTIAL",
-  "PAID",
-  "OVERDUE",
-]);
+export const rentStatusEnum = pgEnum(
+  "rent_status",
+  [
+    "PENDING",
+    "PARTIAL",
+    "PAID",
+    "OVERDUE",
+  ]
+);
 
 export const rentBills = pgTable(
   "rent_bills",
   {
-    id: varchar("id", { length: 36 }).primaryKey(),
+    id: varchar("id", {
+      length: 36,
+    }).primaryKey(),
 
     tenantId: varchar("tenant_id", {
       length: 36,
@@ -28,23 +34,20 @@ export const rentBills = pgTable(
       .notNull()
       .references(() => tenants.id),
 
-    billingPeriodStart: timestamp(
-      "billing_period_start",
-      {
-        withTimezone: true,
-      }
+    // Calendar/business date
+    billingPeriodStart: date(
+      "billing_period_start"
     ).notNull(),
 
-    billingPeriodEnd: timestamp(
-      "billing_period_end",
-      {
-        withTimezone: true,
-      }
+    // Calendar/business date
+    billingPeriodEnd: date(
+      "billing_period_end"
     ).notNull(),
 
-    dueDate: timestamp("due_date", {
-      withTimezone: true,
-    }).notNull(),
+    // Calendar/business date
+    dueDate: date(
+      "due_date"
+    ).notNull(),
 
     amountDue: decimal("amount_due", {
       precision: 10,
@@ -58,10 +61,13 @@ export const rentBills = pgTable(
       .notNull()
       .default("0"),
 
-    balanceAmount: decimal("balance_amount", {
-      precision: 10,
-      scale: 2,
-    })
+    balanceAmount: decimal(
+      "balance_amount",
+      {
+        precision: 10,
+        scale: 2,
+      }
+    )
       .notNull()
       .default("0"),
 
@@ -69,15 +75,23 @@ export const rentBills = pgTable(
       .notNull()
       .default("PENDING"),
 
-    createdAt: timestamp("created_at", {
-      withTimezone: true,
-    })
+    // Actual timestamp
+    createdAt: timestamp(
+      "created_at",
+      {
+        withTimezone: true,
+      }
+    )
       .notNull()
       .defaultNow(),
 
-    updatedAt: timestamp("updated_at", {
-      withTimezone: true,
-    })
+    // Actual timestamp
+    updatedAt: timestamp(
+      "updated_at",
+      {
+        withTimezone: true,
+      }
+    )
       .notNull()
       .defaultNow(),
   },
@@ -89,16 +103,16 @@ export const rentBills = pgTable(
       table.billingPeriodStart
     ),
 
-    tenantIdx: index("rent_bills_tenant_idx").on(
-      table.tenantId
-    ),
+    tenantIdx: index(
+      "rent_bills_tenant_idx"
+    ).on(table.tenantId),
 
-    dueDateIdx: index("rent_bills_due_date_idx").on(
-      table.dueDate
-    ),
+    dueDateIdx: index(
+      "rent_bills_due_date_idx"
+    ).on(table.dueDate),
 
-    statusIdx: index("rent_bills_status_idx").on(
-      table.status
-    ),
+    statusIdx: index(
+      "rent_bills_status_idx"
+    ).on(table.status),
   })
 );

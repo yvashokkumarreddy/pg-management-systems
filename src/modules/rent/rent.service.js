@@ -21,6 +21,26 @@ import {
 } from "./rent.utils.js";
 
 
+function getTodayDateString() {
+  const now = new Date();
+
+  const year =
+    now.getFullYear();
+
+  const month =
+    String(
+      now.getMonth() + 1
+    ).padStart(2, "0");
+
+  const day =
+    String(
+      now.getDate()
+    ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+
 async function refreshBillStatus(
   bill
 ) {
@@ -127,6 +147,7 @@ export async function getRentBillsService(
     },
   };
 }
+
 
 export async function getRentBillByIdService(
   billId,
@@ -274,34 +295,21 @@ export async function generateNextRentBillService(
   }
 
   /*
-   * Don't accidentally generate
-   * future rent bills.
+   * All rent-cycle dates are PostgreSQL
+   * DATE values represented as
+   * YYYY-MM-DD strings.
    *
-   * Example:
-   * Current cycle starts Sep 17.
-   * Calling this API on Sep 10 is rejected.
+   * Compare calendar dates directly.
+   * Do not convert them through
+   * new Date("YYYY-MM-DD"), because that
+   * introduces UTC/timezone behaviour.
    */
-  const now = new Date();
-
-  const today = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate()
-  );
-
-  const cycleStart = new Date(
-    cycle.billingPeriodStart
-  );
-
-  const normalizedCycleStart =
-    new Date(
-      cycleStart.getFullYear(),
-      cycleStart.getMonth(),
-      cycleStart.getDate()
-    );
+  const today =
+    getTodayDateString();
 
   if (
-    normalizedCycleStart > today
+    cycle.billingPeriodStart >
+    today
   ) {
     throw new Error(
       "Next rent cycle has not started yet"

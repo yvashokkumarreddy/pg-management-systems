@@ -24,6 +24,10 @@ export async function GET() {
         id:
           user.id,
 
+        name:
+          user.name ??
+          null,
+
         email,
 
         status:
@@ -41,6 +45,7 @@ export async function GET() {
       return NextResponse.json(
         {
           success: false,
+
           message:
             error.message,
         },
@@ -60,6 +65,7 @@ export async function GET() {
     return NextResponse.json(
       {
         success: false,
+
         message:
           "Failed to get current owner",
       },

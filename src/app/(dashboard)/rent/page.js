@@ -2262,13 +2262,17 @@ export default function RentPage() {
                       value={
                         paymentDate
                       }
-                      onChange={(
-                        event
-                      ) =>
-                        setPaymentDate(
-                          event.target.value
-                        )
-                      }
+                      onChange={(event) =>{
+                    console.log(
+                      "Payment date changed:",
+                      event.target.value
+                    )
+                    setPaymentDate(
+                      event.target
+                        .value
+                    )
+                  }
+                  }
                       disabled={
                         paymentSubmitting
                       }

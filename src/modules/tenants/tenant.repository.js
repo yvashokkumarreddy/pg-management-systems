@@ -18,39 +18,84 @@ import {
 } from "@/db/schema";
 
 
+/* ======================================================
+   FIND TENANTS BY OWNER
+====================================================== */
+
 export async function findTenantsByOwner(
   dbClient,
   ownerId
 ) {
   return await dbClient
     .select({
-      id: tenants.id,
-      fullName: tenants.fullName,
-      mobile: tenants.mobile,
-      dueDate:rentBills.dueDate,
-      dateOfJoining: tenants.dateOfJoining,
-      dateOfLeaving: tenants.dateOfLeaving,
-      monthlyRent: tenants.monthlyRent,
-      status: tenants.status,
-      balanceAmount: rentBills.balanceAmount,
-      roomId: rooms.id,
-      roomNumber: rooms.roomNumber,
-      floor: rooms.floor,
+      id:
+        tenants.id,
+
+      fullName:
+        tenants.fullName,
+
+      mobile:
+        tenants.mobile,
+
+      dueDate:
+        rentBills.dueDate,
+
+      dateOfJoining:
+        tenants.dateOfJoining,
+
+      dateOfLeaving:
+        tenants.dateOfLeaving,
+
+      monthlyRent:
+        tenants.monthlyRent,
+
+      status:
+        tenants.status,
+
+      balanceAmount:
+        rentBills.balanceAmount,
+
+      roomId:
+        rooms.id,
+
+      roomNumber:
+        rooms.roomNumber,
+
+      floor:
+        rooms.floor,
     })
     .from(tenants)
     .leftJoin(
       rooms,
-      eq(tenants.roomId, rooms.id)
+      eq(
+        tenants.roomId,
+        rooms.id
+      )
     )
     .leftJoin(
       rentBills,
-        eq(rentBills.tenantId, tenants.id))
-    .where(
-      eq(tenants.ownerId, ownerId)
+      eq(
+        rentBills.tenantId,
+        tenants.id
+      )
     )
-     .orderBy(asc(rooms.roomNumber));
+    .where(
+      eq(
+        tenants.ownerId,
+        ownerId
+      )
+    )
+    .orderBy(
+      asc(
+        rooms.roomNumber
+      )
+    );
 }
 
+
+/* ======================================================
+   FIND ROOM BY ID
+====================================================== */
 
 export async function findRoomById(
   dbClient,
@@ -61,7 +106,10 @@ export async function findRoomById(
       .select()
       .from(rooms)
       .where(
-        eq(rooms.id, roomId)
+        eq(
+          rooms.id,
+          roomId
+        )
       )
       .limit(1);
 
@@ -69,10 +117,19 @@ export async function findRoomById(
 }
 
 
+/* ======================================================
+   CREATE TENANT
+====================================================== */
+
 export async function createTenant(
   dbClient,
   data
 ) {
+  /*
+   * dateOfJoining/dateOfBirth/etc.
+   * are expected to already be
+   * YYYY-MM-DD strings.
+   */
   const result =
     await dbClient
       .insert(tenants)
@@ -83,10 +140,19 @@ export async function createTenant(
 }
 
 
+/* ======================================================
+   CREATE RENT BILL
+====================================================== */
+
 export async function createRentBill(
   dbClient,
   data
 ) {
+  /*
+   * billingPeriodStart,
+   * billingPeriodEnd and dueDate
+   * are YYYY-MM-DD strings.
+   */
   const result =
     await dbClient
       .insert(rentBills)
@@ -96,6 +162,7 @@ export async function createRentBill(
   return result[0];
 }
 
+
 /* ======================================================
    FIND CURRENT RENT BILL
 ====================================================== */
@@ -103,8 +170,27 @@ export async function createRentBill(
 export async function findCurrentRentBill(
   dbClient,
   tenantId,
-  currentDate = new Date()
+  currentDate
 ) {
+  if (!currentDate) {
+    throw new Error(
+      "Current date is required"
+    );
+  }
+
+  /*
+   * currentDate is expected to be:
+   *
+   * YYYY-MM-DD
+   *
+   * Example:
+   * 2026-09-01
+   *
+   * rentBills.billingPeriodStart and
+   * billingPeriodEnd are PostgreSQL DATE
+   * columns, so all comparisons remain
+   * date-only.
+   */
   const result =
     await dbClient
       .select()
@@ -115,10 +201,12 @@ export async function findCurrentRentBill(
             rentBills.tenantId,
             tenantId
           ),
+
           lte(
             rentBills.billingPeriodStart,
             currentDate
           ),
+
           gte(
             rentBills.billingPeriodEnd,
             currentDate
@@ -151,6 +239,10 @@ export async function updateRentBill(
       .set({
         ...data,
 
+        /*
+         * updatedAt is an actual
+         * timestamp, so Date is correct.
+         */
         updatedAt:
           new Date(),
       })
@@ -165,19 +257,30 @@ export async function updateRentBill(
   return result[0] ?? null;
 }
 
+
+/* ======================================================
+   CREATE TENANT DEPOSIT
+====================================================== */
+
 export async function createTenantDeposit(
   dbClient,
   data
 ) {
   const result =
     await dbClient
-      .insert(tenantDeposits)
+      .insert(
+        tenantDeposits
+      )
       .values(data)
       .returning();
 
   return result[0];
 }
 
+
+/* ======================================================
+   FIND TENANT BY ID
+====================================================== */
 
 export async function findTenantById(
   dbClient,
@@ -194,6 +297,7 @@ export async function findTenantById(
             tenants.id,
             tenantId
           ),
+
           eq(
             tenants.ownerId,
             ownerId
@@ -205,6 +309,10 @@ export async function findTenantById(
   return result[0] ?? null;
 }
 
+
+/* ======================================================
+   FIND TENANT DETAILS BY ID
+====================================================== */
 
 export async function findTenantDetailsById(
   dbClient,
@@ -221,6 +329,7 @@ export async function findTenantDetailsById(
             tenants.id,
             tenantId
           ),
+
           eq(
             tenants.ownerId,
             ownerId
@@ -229,12 +338,15 @@ export async function findTenantDetailsById(
       )
       .limit(1);
 
+
   const tenant =
     tenantResult[0];
+
 
   if (!tenant) {
     return null;
   }
+
 
   const roomResult =
     tenant.roomId
@@ -250,10 +362,13 @@ export async function findTenantDetailsById(
           .limit(1)
       : [];
 
+
   const depositResult =
     await dbClient
       .select()
-      .from(tenantDeposits)
+      .from(
+        tenantDeposits
+      )
       .where(
         eq(
           tenantDeposits.tenantId,
@@ -261,6 +376,7 @@ export async function findTenantDetailsById(
         )
       )
       .limit(1);
+
 
   const bills =
     await dbClient
@@ -278,6 +394,7 @@ export async function findTenantDetailsById(
         )
       );
 
+
   const tenantPayments =
     await dbClient
       .select()
@@ -293,6 +410,7 @@ export async function findTenantDetailsById(
           payments.paymentDate
         )
       );
+
 
   return {
     ...tenant,
@@ -314,6 +432,10 @@ export async function findTenantDetailsById(
 }
 
 
+/* ======================================================
+   COUNT OCCUPIED BEDS BY ROOM
+====================================================== */
+
 export async function countOccupiedBedsByRoom(
   dbClient,
   roomId
@@ -321,7 +443,8 @@ export async function countOccupiedBedsByRoom(
   const result =
     await dbClient
       .select({
-        count: count(),
+        count:
+          count(),
       })
       .from(tenants)
       .where(
@@ -330,6 +453,7 @@ export async function countOccupiedBedsByRoom(
             tenants.roomId,
             roomId
           ),
+
           inArray(
             tenants.status,
             [
@@ -340,12 +464,17 @@ export async function countOccupiedBedsByRoom(
         )
       );
 
+
   return (
     result[0]?.count ??
     0
   );
 }
 
+
+/* ======================================================
+   UPDATE TENANT
+====================================================== */
 
 export async function updateTenant(
   dbClient,
@@ -358,6 +487,11 @@ export async function updateTenant(
       .update(tenants)
       .set({
         ...data,
+
+        /*
+         * updatedAt remains a real
+         * timestamp.
+         */
         updatedAt:
           new Date(),
       })
@@ -367,6 +501,7 @@ export async function updateTenant(
             tenants.id,
             tenantId
           ),
+
           eq(
             tenants.ownerId,
             ownerId
@@ -375,9 +510,14 @@ export async function updateTenant(
       )
       .returning();
 
+
   return result[0] ?? null;
 }
 
+
+/* ======================================================
+   UPDATE TENANT DEPOSIT
+====================================================== */
 
 export async function updateTenantDeposit(
   dbClient,
@@ -392,6 +532,10 @@ export async function updateTenantDeposit(
       .set({
         ...data,
 
+        /*
+         * updatedAt remains a real
+         * timestamp.
+         */
         updatedAt:
           new Date(),
       })
@@ -403,9 +547,14 @@ export async function updateTenantDeposit(
       )
       .returning();
 
+
   return result[0] ?? null;
 }
 
+
+/* ======================================================
+   ARCHIVE TENANT
+====================================================== */
 
 export async function archiveTenant(
   dbClient,
@@ -413,6 +562,10 @@ export async function archiveTenant(
   ownerId,
   leavingDate
 ) {
+  /*
+   * leavingDate is expected to be
+   * YYYY-MM-DD.
+   */
   const result =
     await dbClient
       .update(tenants)
@@ -423,6 +576,10 @@ export async function archiveTenant(
         dateOfLeaving:
           leavingDate,
 
+        /*
+         * updatedAt remains a real
+         * timestamp.
+         */
         updatedAt:
           new Date(),
       })
@@ -432,6 +589,7 @@ export async function archiveTenant(
             tenants.id,
             tenantId
           ),
+
           eq(
             tenants.ownerId,
             ownerId
@@ -439,6 +597,7 @@ export async function archiveTenant(
         )
       )
       .returning();
+
 
   return result[0] ?? null;
 }
@@ -463,6 +622,10 @@ export async function restoreTenant(
         dateOfLeaving:
           null,
 
+        /*
+         * updatedAt remains a real
+         * timestamp.
+         */
         updatedAt:
           new Date(),
       })
@@ -472,6 +635,7 @@ export async function restoreTenant(
             tenants.id,
             tenantId
           ),
+
           eq(
             tenants.ownerId,
             ownerId
@@ -479,6 +643,7 @@ export async function restoreTenant(
         )
       )
       .returning();
+
 
   return result[0] ?? null;
 }

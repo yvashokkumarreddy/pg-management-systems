@@ -26,12 +26,10 @@ export async function POST(
     const body =
       await request.json();
 
-
     const validation =
       validateLogin(
         body
       );
-
 
     if (
       !validation.isValid
@@ -39,8 +37,10 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
+
           message:
-            validation.errors.file,
+            "Please check your login details.",
+
           errors:
             validation.errors,
         },
@@ -51,33 +51,37 @@ export async function POST(
     }
 
 
+    const email =
+      body.email
+        .trim()
+        .toLowerCase();
+
+
     const supabase =
       await createClient();
 
-console.log("Supabase client created:", body.email, body.password);
+
     const {
       data,
       error,
     } =
       await supabase.auth
         .signInWithPassword({
-          email:
-            body.email
-              .trim()
-              .toLowerCase(),
+          email,
 
           password:
             body.password,
         });
 
-console.log(error, data.user);
+
     if (
       error ||
-      !data.user
+      !data?.user
     ) {
       return NextResponse.json(
         {
           success: false,
+
           message:
             "Invalid email or password",
         },
@@ -97,16 +101,21 @@ console.log(error, data.user);
 
     if (!owner) {
       /*
-       * Auth succeeded but there's
-       * no corresponding app owner.
+       * Supabase authentication
+       * succeeded, but this auth user
+       * is not linked to an owner row
+       * in the application database.
+       *
+       * Sign out immediately so an
+       * authenticated Supabase session
+       * is not left active.
        */
-
       await supabase.auth.signOut();
-
 
       return NextResponse.json(
         {
           success: false,
+
           message:
             "Owner account is not linked",
         },
@@ -122,12 +131,16 @@ console.log(error, data.user);
       owner.status !==
         "ACTIVE"
     ) {
+      /*
+       * Inactive owners must not keep
+       * an authenticated session.
+       */
       await supabase.auth.signOut();
-
 
       return NextResponse.json(
         {
           success: false,
+
           message:
             "Owner account is inactive",
         },
@@ -149,22 +162,24 @@ console.log(error, data.user);
           owner.id,
 
         email:
-          data.user.email,
+          data.user.email ??
+          email,
 
         status:
-          owner.status,
+          owner.status ??
+          "ACTIVE",
       },
     });
   } catch (error) {
     console.error(
-      "Login error:",
+      "Login route error:",
       error
     );
-
 
     return NextResponse.json(
       {
         success: false,
+
         message:
           "Failed to login",
       },

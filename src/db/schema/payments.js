@@ -2,6 +2,7 @@ import {
   pgTable,
   varchar,
   timestamp,
+  date,
   decimal,
   pgEnum,
   index,
@@ -23,7 +24,9 @@ export const paymentModeEnum = pgEnum(
 export const payments = pgTable(
   "payments",
   {
-    id: varchar("id", { length: 36 }).primaryKey(),
+    id: varchar("id", {
+      length: 36,
+    }).primaryKey(),
 
     tenantId: varchar("tenant_id", {
       length: 36,
@@ -42,32 +45,40 @@ export const payments = pgTable(
       scale: 2,
     }).notNull(),
 
-    paymentDate: timestamp("payment_date", {
-      withTimezone: true,
-    }).notNull(),
+    paymentDate: date(
+      "payment_date"
+    ).notNull(),
 
-    mode: paymentModeEnum("mode").notNull(),
+    mode: paymentModeEnum(
+      "mode"
+    ).notNull(),
 
     notes: varchar("notes", {
       length: 500,
     }),
 
-    createdAt: timestamp("created_at", {
-      withTimezone: true,
-    })
+    createdAt: timestamp(
+      "created_at",
+      {
+        withTimezone: true,
+      }
+    )
       .notNull()
       .defaultNow(),
 
-    updatedAt: timestamp("updated_at", {
-      withTimezone: true,
-    })
+    updatedAt: timestamp(
+      "updated_at",
+      {
+        withTimezone: true,
+      }
+    )
       .notNull()
       .defaultNow(),
   },
   (table) => ({
-    tenantIdx: index("payments_tenant_idx").on(
-      table.tenantId
-    ),
+    tenantIdx: index(
+      "payments_tenant_idx"
+    ).on(table.tenantId),
 
     rentBillIdx: index(
       "payments_rent_bill_idx"

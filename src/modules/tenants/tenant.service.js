@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 import { db } from "@/db";
 
 import {
@@ -19,6 +21,70 @@ import {
 import {
   calculateRentCycle,
 } from "./tenant.utils.js";
+
+
+/* ======================================================
+   DATE HELPERS
+====================================================== */
+
+function getTodayDateString() {
+  const now = new Date();
+
+  const year =
+    now.getFullYear();
+
+  const month =
+    String(
+      now.getMonth() + 1
+    ).padStart(2, "0");
+
+  const day =
+    String(
+      now.getDate()
+    ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+
+function isValidDateString(
+  value
+) {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      value
+    )
+  ) {
+    return false;
+  }
+
+  const [
+    year,
+    month,
+    day,
+  ] = value
+    .split("-")
+    .map(Number);
+
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31
+  ) {
+    return false;
+  }
+
+  const daysInMonth =
+    new Date(
+      year,
+      month,
+      0
+    ).getDate();
+
+  return day <= daysInMonth;
+}
 
 
 /* ======================================================
@@ -58,6 +124,7 @@ export async function createTenantService(
     );
   }
 
+
   /*
    * Check occupancy BEFORE inserting
    * the new tenant.
@@ -77,10 +144,29 @@ export async function createTenantService(
     );
   }
 
+
+  /*
+   * dateOfJoining is a PostgreSQL DATE.
+   *
+   * It must remain YYYY-MM-DD.
+   * Do not convert it to new Date().
+   */
+  if (
+    !isValidDateString(
+      data.dateOfJoining
+    )
+  ) {
+    throw new Error(
+      "Invalid joining date"
+    );
+  }
+
+
   const rentCycle =
     calculateRentCycle(
       data.dateOfJoining
     );
+
 
   const tenantId =
     crypto.randomUUID();
@@ -107,10 +193,12 @@ export async function createTenantService(
             mobile:
               data.mobile,
 
+            /*
+             * PostgreSQL DATE
+             * YYYY-MM-DD
+             */
             dateOfJoining:
-              new Date(
-                data.dateOfJoining
-              ),
+              data.dateOfJoining,
 
             monthlyRent:
               String(
@@ -261,10 +349,6 @@ export async function getTenantByIdService(
    UPDATE TENANT
 ====================================================== */
 
-/* ======================================================
-   UPDATE TENANT
-====================================================== */
-
 export async function updateTenantService(
   tenantId,
   ownerId,
@@ -308,7 +392,9 @@ export async function updateTenantService(
   const monthlyRentChanged =
     data.monthlyRent !==
       undefined &&
-    Number(data.monthlyRent) !==
+    Number(
+      data.monthlyRent
+    ) !==
       Number(
         existingTenant.monthlyRent
       );
@@ -372,6 +458,39 @@ export async function updateTenantService(
   }
 
 
+  /* ====================================================
+     DATE VALIDATION
+  ==================================================== */
+
+  if (
+    data.dateOfBirth !==
+      undefined &&
+    data.dateOfBirth !==
+      null &&
+    data.dateOfBirth !== "" &&
+    !isValidDateString(
+      data.dateOfBirth
+    )
+  ) {
+    throw new Error(
+      "Invalid date of birth"
+    );
+  }
+
+
+  if (
+    data.dateOfJoining !==
+      undefined &&
+    !isValidDateString(
+      data.dateOfJoining
+    )
+  ) {
+    throw new Error(
+      "Invalid joining date"
+    );
+  }
+
+
   return await db.transaction(
     async (tx) => {
       /* ==================================================
@@ -409,27 +528,30 @@ export async function updateTenantService(
       }
 
 
+      /*
+       * PostgreSQL DATE
+       * Keep as YYYY-MM-DD.
+       */
       if (
         data.dateOfBirth !==
         undefined
       ) {
         tenantUpdate.dateOfBirth =
-          data.dateOfBirth
-            ? new Date(
-                data.dateOfBirth
-              )
-            : null;
+          data.dateOfBirth ||
+          null;
       }
 
 
+      /*
+       * PostgreSQL DATE
+       * Keep as YYYY-MM-DD.
+       */
       if (
         data.dateOfJoining !==
         undefined
       ) {
         tenantUpdate.dateOfJoining =
-          new Date(
-            data.dateOfJoining
-          );
+          data.dateOfJoining;
       }
 
 
@@ -483,7 +605,7 @@ export async function updateTenantService(
           await findCurrentRentBill(
             tx,
             tenantId,
-            new Date()
+            getTodayDateString()
           );
 
 
@@ -629,17 +751,19 @@ export async function archiveTenantService(
   }
 
 
+  /*
+   * dateOfLeaving is a PostgreSQL DATE.
+   *
+   * Do not convert it through new Date().
+   */
   const parsedLeavingDate =
-    leavingDate
-      ? new Date(
-          leavingDate
-        )
-      : new Date();
+    leavingDate ||
+    getTodayDateString();
 
 
   if (
-    Number.isNaN(
-      parsedLeavingDate.getTime()
+    !isValidDateString(
+      parsedLeavingDate
     )
   ) {
     throw new Error(
@@ -648,11 +772,13 @@ export async function archiveTenantService(
   }
 
 
+  /*
+   * Both values are YYYY-MM-DD.
+   * Direct string comparison is safe.
+   */
   if (
     parsedLeavingDate <
-    new Date(
-      existingTenant.dateOfJoining
-    )
+    existingTenant.dateOfJoining
   ) {
     throw new Error(
       "Leaving date cannot be before joining date"

@@ -1,168 +1,398 @@
 "use client";
 
-import { useState } from "react";
+import {
+  useState,
+} from "react";
+
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { apiRequest } from "@/lib/api/client";
+
+import {
+  useRouter,
+} from "next/navigation";
+
+import {
+  apiRequest,
+} from "@/lib/api/client";
+
 
 export default function RegisterForm() {
-  const router = useRouter();
+  const router =
+    useRouter();
 
-  const [form, setForm] = useState({
+  const [
+    form,
+    setForm,
+  ] = useState({
     name: "",
     email: "",
     password: "",
     confirmPassword: "",
   });
 
-  const [error, setError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [
+    error,
+    setError,
+  ] = useState("");
 
-  function updateField(event) {
-    setForm((current) => ({
-      ...current,
-      [event.target.name]: event.target.value,
-    }));
+  const [
+    submitting,
+    setSubmitting,
+  ] = useState(false);
+
+
+  function updateField(
+    event
+  ) {
+    const {
+      name,
+      value,
+    } =
+      event.target;
+
+    setForm(
+      (current) => ({
+        ...current,
+        [name]:
+          value,
+      })
+    );
+
+    setError("");
   }
 
-  async function handleSubmit(event) {
+
+  async function handleSubmit(
+    event
+  ) {
     event.preventDefault();
+
+    if (submitting) {
+      return;
+    }
 
     setError("");
 
-    if (!form.name.trim()) {
-      setError("Enter your name.");
+    const name =
+      form.name.trim();
+
+    const email =
+      form.email
+        .trim()
+        .toLowerCase();
+
+
+    if (!name) {
+      setError(
+        "Enter your name."
+      );
+
       return;
     }
 
-    if (!form.email.trim()) {
-      setError("Enter your email address.");
+    if (!email) {
+      setError(
+        "Enter your email address."
+      );
+
       return;
     }
 
-    if (form.password.length < 8) {
-      setError("Password must contain at least 8 characters.");
+    if (
+      form.password.length <
+      8
+    ) {
+      setError(
+        "Password must contain at least 8 characters."
+      );
+
       return;
     }
 
-    if (form.password !== form.confirmPassword) {
-      setError("Passwords do not match.");
+    if (
+      form.password !==
+      form.confirmPassword
+    ) {
+      setError(
+        "Passwords do not match."
+      );
+
       return;
     }
+
 
     try {
-      setSubmitting(true);
+      setSubmitting(
+        true
+      );
 
-      await apiRequest("/api/auth/register", {
-        method: "POST",
-        body: JSON.stringify({
-          name: form.name.trim(),
-          email: form.email.trim(),
-          password: form.password,
-        }),
-      });
+      await apiRequest(
+        "/api/auth/register",
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body:
+            JSON.stringify({
+              name,
+              email,
+              password:
+                form.password,
+            }),
+        }
+      );
+
 
       /*
-       * Registration creates the account.
-       * Login afterwards so the browser receives the normal
-       * Supabase cookie-based session.
+       * Registration creates the
+       * application account.
+       *
+       * Sign in afterwards so the
+       * normal Supabase cookie-based
+       * browser session is created.
        */
-      await apiRequest("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({
-          email: form.email.trim(),
-          password: form.password,
-        }),
-      });
+      await apiRequest(
+        "/api/auth/login",
+        {
+          method:
+            "POST",
 
-      router.replace("/dashboard");
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body:
+            JSON.stringify({
+              email,
+              password:
+                form.password,
+            }),
+        }
+      );
+
+
+      router.replace(
+        "/dashboard"
+      );
+
       router.refresh();
     } catch (err) {
-      setError(err.message);
+      console.error(
+        "Registration error:",
+        err
+      );
+
+
+      if (
+        err?.status ===
+        409
+      ) {
+        setError(
+          "An account with this email already exists."
+        );
+
+        return;
+      }
+
+
+      if (
+        err?.status ===
+        400
+      ) {
+        setError(
+          "Please check your details and try again."
+        );
+
+        return;
+      }
+
+
+      if (
+        err?.status ===
+        429
+      ) {
+        setError(
+          "Too many attempts. Please try again shortly."
+        );
+
+        return;
+      }
+
+
+      setError(
+        "Unable to create your account right now. Please try again."
+      );
     } finally {
-      setSubmitting(false);
+      setSubmitting(
+        false
+      );
     }
   }
 
+
   return (
-    <form className="auth-form" onSubmit={handleSubmit}>
-      <h2>Create account</h2>
+    <form
+      className="auth-form"
+      onSubmit={
+        handleSubmit
+      }
+    >
+      <h2>
+        Create account
+      </h2>
 
       <p className="auth-subtitle">
-        Create your owner account to start managing your PG.
+        Create your owner
+        account to start
+        managing your PG.
       </p>
 
-      {error ? <div className="pg-error">{error}</div> : null}
+
+      {error ? (
+        <div
+          className="pg-error"
+          role="alert"
+        >
+          {error}
+        </div>
+      ) : null}
+
 
       <div className="pg-field">
-        <label htmlFor="name">Name</label>
+        <label htmlFor="name">
+          Name
+        </label>
 
         <input
           id="name"
           name="name"
-          value={form.name}
-          onChange={updateField}
+          type="text"
+          autoComplete="name"
+          required
+          disabled={
+            submitting
+          }
+          value={
+            form.name
+          }
+          onChange={
+            updateField
+          }
           className="pg-input"
           placeholder="Your name"
         />
       </div>
 
+
       <div className="pg-field">
-        <label htmlFor="email">Email</label>
+        <label htmlFor="email">
+          Email
+        </label>
 
         <input
           id="email"
           name="email"
           type="email"
           autoComplete="email"
-          value={form.email}
-          onChange={updateField}
+          inputMode="email"
+          required
+          disabled={
+            submitting
+          }
+          value={
+            form.email
+          }
+          onChange={
+            updateField
+          }
           className="pg-input"
           placeholder="owner@example.com"
         />
       </div>
 
+
       <div className="pg-field">
-        <label htmlFor="password">Password</label>
+        <label htmlFor="password">
+          Password
+        </label>
 
         <input
           id="password"
           name="password"
           type="password"
           autoComplete="new-password"
-          value={form.password}
-          onChange={updateField}
+          minLength={8}
+          required
+          disabled={
+            submitting
+          }
+          value={
+            form.password
+          }
+          onChange={
+            updateField
+          }
           className="pg-input"
           placeholder="Minimum 8 characters"
         />
       </div>
 
+
       <div className="pg-field">
-        <label htmlFor="confirmPassword">Confirm password</label>
+        <label htmlFor="confirmPassword">
+          Confirm password
+        </label>
 
         <input
           id="confirmPassword"
           name="confirmPassword"
           type="password"
           autoComplete="new-password"
-          value={form.confirmPassword}
-          onChange={updateField}
+          minLength={8}
+          required
+          disabled={
+            submitting
+          }
+          value={
+            form.confirmPassword
+          }
+          onChange={
+            updateField
+          }
           className="pg-input"
           placeholder="Repeat your password"
         />
       </div>
 
+
       <button
         type="submit"
         className="pg-button pg-button-primary"
-        style={{ width: "100%" }}
-        disabled={submitting}
+        style={{
+          width:
+            "100%",
+        }}
+        disabled={
+          submitting
+        }
       >
-        {submitting ? "Creating account..." : "Create account"}
+        {submitting
+          ? "Creating account..."
+          : "Create account"}
       </button>
 
+
       <div className="auth-footer">
-        Already registered? <Link href="/login">Sign in</Link>
+        Already registered?{" "}
+
+        <Link href="/login">
+          Sign in
+        </Link>
       </div>
     </form>
   );

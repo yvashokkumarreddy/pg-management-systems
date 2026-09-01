@@ -1,38 +1,80 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import {
+  useRouter,
+} from "next/navigation";
+
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 import MobileNav from "./MobileNav";
-import { apiRequest } from "@/lib/api/client";
 
-export default function AppShell({ children }) {
-  const router = useRouter();
+import {
+  apiRequest,
+} from "@/lib/api/client";
 
-  const [owner, setOwner] = useState(null);
-  const [property, setProperty] = useState(null);
-  const [loading, setLoading] = useState(true);
+
+export default function AppShell({
+  children,
+}) {
+  const router =
+    useRouter();
+
+  const [
+    owner,
+    setOwner,
+  ] = useState(null);
+
+  const [
+    property,
+    setProperty,
+  ] = useState(null);
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled =
+      false;
+
 
     async function loadShell() {
       try {
-        const meResponse = await apiRequest("/api/auth/me");
+        const meResponse =
+          await apiRequest(
+            "/api/auth/me"
+          );
+
 
         if (cancelled) {
           return;
         }
 
-        setOwner(meResponse.data);
+
+        setOwner(
+          meResponse.data
+        );
+
 
         try {
           const profileResponse =
-            await apiRequest("/api/pg-profile");
+            await apiRequest(
+              "/api/pg-profile"
+            );
+
 
           if (!cancelled) {
-            setProperty(profileResponse.data || null);
+            setProperty(
+              profileResponse.data ||
+                null
+            );
           }
         } catch {
           if (!cancelled) {
@@ -40,15 +82,37 @@ export default function AppShell({ children }) {
           }
         }
       } catch (error) {
-        if (!cancelled && error.status === 401) {
-          router.replace("/login");
-          router.refresh();
+        if (cancelled) {
           return;
         }
 
-        if (!cancelled) {
-          router.replace("/login");
+
+        if (
+          error?.status ===
+            401 ||
+          error?.status ===
+            403
+        ) {
+          router.replace(
+            "/login"
+          );
+
+          router.refresh();
+
+          return;
         }
+
+
+        console.error(
+          "Failed to load workspace:",
+          error
+        );
+
+        router.replace(
+          "/login"
+        );
+
+        router.refresh();
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -56,12 +120,17 @@ export default function AppShell({ children }) {
       }
     }
 
+
     loadShell();
+
 
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [
+    router,
+  ]);
+
 
   if (loading) {
     return (
@@ -71,16 +140,24 @@ export default function AppShell({ children }) {
     );
   }
 
+
   if (!owner) {
     return null;
   }
 
+
   return (
     <div className="app-shell">
-      <Sidebar owner={owner} />
+      <Sidebar
+        owner={owner}
+      />
 
       <div className="app-main">
-        <TopBar property={property} />
+        <TopBar
+          property={
+            property
+          }
+        />
 
         <main className="page-content">
           {children}

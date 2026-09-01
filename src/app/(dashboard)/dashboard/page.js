@@ -233,7 +233,7 @@ export default function DashboardPage() {
       <button
         type="button"
         className="pg-button pg-button-primary"
-        onClick={() => router.push("/tenants/new")}
+       onClick={() => router.push("/tenants/new")}
       >
         <Plus size={17} />
         Add tenant
@@ -341,7 +341,7 @@ export default function DashboardPage() {
         <button
           type="button"
           className="quick-action-card"
-          onClick={() => router.push("/tenants/new")}
+         onClick={() => router.push("/tenants/new")}
         >
           <span className="quick-action-icon">
             <Plus size={18} />

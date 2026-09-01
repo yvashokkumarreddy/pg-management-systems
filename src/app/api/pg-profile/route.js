@@ -12,17 +12,20 @@ import {
   validateCreatePgProfile,
   validateUpdatePgProfile,
 } from "@/modules/pg-profile/pg-profile.validation";
-import { getCurrentOwner } from "@/modules/auth/auth.service";
 
+import {
+  getCurrentOwner,
+} from "@/modules/auth/auth.service";
 
 
 export async function POST(
   request
 ) {
   try {
-    const { ownerId } =
-  await getCurrentOwner();
-
+    const {
+      ownerId,
+    } =
+      await getCurrentOwner();
 
     if (!ownerId) {
       return NextResponse.json(
@@ -37,25 +40,28 @@ export async function POST(
       );
     }
 
-
     const body =
       await request.json();
-
 
     const validation =
       validateCreatePgProfile(
         body
       );
 
-
     if (
       !validation.isValid
     ) {
+      const firstError =
+        Object.values(
+          validation.errors
+        )[0];
+
       return NextResponse.json(
         {
           success: false,
           message:
-            validation.errors.file,
+            firstError ||
+            "Invalid PG profile data",
           errors:
             validation.errors,
         },
@@ -65,13 +71,11 @@ export async function POST(
       );
     }
 
-
     const profile =
       await createPgProfileService(
         ownerId,
         body
       );
-
 
     return NextResponse.json(
       {
@@ -93,10 +97,8 @@ export async function POST(
       error
     );
 
-
     let status =
       400;
-
 
     if (
       error.message ===
@@ -106,7 +108,6 @@ export async function POST(
         404;
     }
 
-
     if (
       error.message ===
       "PG profile already exists"
@@ -114,7 +115,6 @@ export async function POST(
       status =
         409;
     }
-
 
     return NextResponse.json(
       {
@@ -131,13 +131,12 @@ export async function POST(
 }
 
 
-export async function GET(
-  request
-) {
+export async function GET() {
   try {
-    const { ownerId } =
-  await getCurrentOwner();
-
+    const {
+      ownerId,
+    } =
+      await getCurrentOwner();
 
     if (!ownerId) {
       return NextResponse.json(
@@ -152,12 +151,10 @@ export async function GET(
       );
     }
 
-
     const profile =
       await getPgProfileService(
         ownerId
       );
-
 
     return NextResponse.json({
       success: true,
@@ -170,13 +167,11 @@ export async function GET(
       error
     );
 
-
     const status =
       error.message ===
       "PG profile not found"
         ? 404
         : 500;
-
 
     return NextResponse.json(
       {
@@ -197,9 +192,10 @@ export async function PATCH(
   request
 ) {
   try {
-    const { ownerId } =
-  await getCurrentOwner();
-
+    const {
+      ownerId,
+    } =
+      await getCurrentOwner();
 
     if (!ownerId) {
       return NextResponse.json(
@@ -214,25 +210,28 @@ export async function PATCH(
       );
     }
 
-
     const body =
       await request.json();
-
 
     const validation =
       validateUpdatePgProfile(
         body
       );
 
-
     if (
       !validation.isValid
     ) {
+      const firstError =
+        Object.values(
+          validation.errors
+        )[0];
+
       return NextResponse.json(
         {
           success: false,
           message:
-            validation.errors.file,
+            firstError ||
+            "Invalid PG profile data",
           errors:
             validation.errors,
         },
@@ -242,13 +241,11 @@ export async function PATCH(
       );
     }
 
-
     const profile =
       await updatePgProfileService(
         ownerId,
         body
       );
-
 
     return NextResponse.json({
       success: true,
@@ -265,13 +262,11 @@ export async function PATCH(
       error
     );
 
-
     const status =
       error.message ===
       "PG profile not found"
         ? 404
         : 400;
-
 
     return NextResponse.json(
       {

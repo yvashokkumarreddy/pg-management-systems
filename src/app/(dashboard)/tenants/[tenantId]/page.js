@@ -1289,11 +1289,16 @@ function RecordPaymentModal({
                   value={
                     paymentDate
                   }
-                  onChange={(event) =>
+                  onChange={(event) =>{
+                    console.log(
+                      "Payment date changed:",
+                      event.target.value
+                    )
                     setPaymentDate(
                       event.target
                         .value
                     )
+                  }
                   }
                   required
                 />

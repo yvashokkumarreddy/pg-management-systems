@@ -14,130 +14,261 @@ import {
   payments,
 } from "@/db/schema";
 
+
+/* ======================================================
+   DATE HELPERS
+====================================================== */
+
+function formatDate({
+  year,
+  month,
+  day,
+}) {
+  return [
+    String(year).padStart(
+      4,
+      "0"
+    ),
+    String(month).padStart(
+      2,
+      "0"
+    ),
+    String(day).padStart(
+      2,
+      "0"
+    ),
+  ].join("-");
+}
+
+
+function getCurrentMonthRange() {
+  const now =
+    new Date();
+
+  const year =
+    now.getFullYear();
+
+  const month =
+    now.getMonth() + 1;
+
+
+  const monthStart =
+    formatDate({
+      year,
+      month,
+      day: 1,
+    });
+
+
+  let nextYear =
+    year;
+
+  let nextMonth =
+    month + 1;
+
+
+  if (
+    nextMonth === 13
+  ) {
+    nextMonth = 1;
+    nextYear += 1;
+  }
+
+
+  const nextMonthStart =
+    formatDate({
+      year:
+        nextYear,
+
+      month:
+        nextMonth,
+
+      day: 1,
+    });
+
+
+  return {
+    monthStart,
+    nextMonthStart,
+  };
+}
+
+
+/* ======================================================
+   FIND TENANT FOR RENT
+====================================================== */
+
 export async function findTenantForRent(
   dbClient,
   tenantId,
   ownerId
 ) {
-  const result = await dbClient
-    .select({
-      id: tenants.id,
-      ownerId: tenants.ownerId,
-      roomId: tenants.roomId,
+  const result =
+    await dbClient
+      .select({
+        id:
+          tenants.id,
 
-      fullName: tenants.fullName,
-      mobile: tenants.mobile,
+        ownerId:
+          tenants.ownerId,
 
-      dateOfJoining:
-        tenants.dateOfJoining,
+        roomId:
+          tenants.roomId,
 
-      dateOfLeaving:
-        tenants.dateOfLeaving,
+        fullName:
+          tenants.fullName,
 
-      monthlyRent:
-        tenants.monthlyRent,
+        mobile:
+          tenants.mobile,
 
-      status:
-        tenants.status,
-    })
-    .from(tenants)
-    .where(
-      and(
-        eq(tenants.id, tenantId),
-        eq(tenants.ownerId, ownerId)
+        dateOfJoining:
+          tenants.dateOfJoining,
+
+        dateOfLeaving:
+          tenants.dateOfLeaving,
+
+        monthlyRent:
+          tenants.monthlyRent,
+
+        status:
+          tenants.status,
+      })
+      .from(tenants)
+      .where(
+        and(
+          eq(
+            tenants.id,
+            tenantId
+          ),
+
+          eq(
+            tenants.ownerId,
+            ownerId
+          )
+        )
       )
-    )
-    .limit(1);
+      .limit(1);
 
   return result[0] ?? null;
 }
 
+
+/* ======================================================
+   CREATE RENT BILL
+====================================================== */
 
 export async function createRentBill(
   dbClient,
   data
 ) {
-  const result = await dbClient
-    .insert(rentBills)
-    .values(data)
-    .returning();
+  const result =
+    await dbClient
+      .insert(rentBills)
+      .values(data)
+      .returning();
 
   return result[0];
 }
 
 
+/* ======================================================
+   FIND LATEST RENT BILL
+====================================================== */
+
 export async function findLatestRentBillByTenant(
   dbClient,
   tenantId
 ) {
-  const result = await dbClient
-    .select()
-    .from(rentBills)
-    .where(
-      eq(
-        rentBills.tenantId,
-        tenantId
+  const result =
+    await dbClient
+      .select()
+      .from(rentBills)
+      .where(
+        eq(
+          rentBills.tenantId,
+          tenantId
+        )
       )
-    )
-    .orderBy(
-      desc(
-        rentBills.billingPeriodStart
+      .orderBy(
+        desc(
+          rentBills.billingPeriodStart
+        )
       )
-    )
-    .limit(1);
+      .limit(1);
 
   return result[0] ?? null;
 }
 
+
+/* ======================================================
+   FIND BILL BY TENANT + PERIOD START
+====================================================== */
 
 export async function findRentBillByTenantAndStart(
   dbClient,
   tenantId,
   billingPeriodStart
 ) {
-  const result = await dbClient
-    .select()
-    .from(rentBills)
-    .where(
-      and(
-        eq(
-          rentBills.tenantId,
-          tenantId
-        ),
-        eq(
-          rentBills.billingPeriodStart,
-          billingPeriodStart
+  const result =
+    await dbClient
+      .select()
+      .from(rentBills)
+      .where(
+        and(
+          eq(
+            rentBills.tenantId,
+            tenantId
+          ),
+
+          eq(
+            rentBills.billingPeriodStart,
+            billingPeriodStart
+          )
         )
       )
-    )
-    .limit(1);
+      .limit(1);
 
   return result[0] ?? null;
 }
 
+
+/* ======================================================
+   UPDATE RENT BILL STATUS
+====================================================== */
 
 export async function updateRentBillStatus(
   dbClient,
   billId,
   status
 ) {
-  const result = await dbClient
-    .update(rentBills)
-    .set({
-      status,
-      updatedAt: new Date(),
-    })
-    .where(
-      eq(
-        rentBills.id,
-        billId
+  const result =
+    await dbClient
+      .update(rentBills)
+      .set({
+        status,
+
+        /*
+         * updatedAt is an actual event
+         * timestamp, so Date is correct.
+         */
+        updatedAt:
+          new Date(),
+      })
+      .where(
+        eq(
+          rentBills.id,
+          billId
+        )
       )
-    )
-    .returning();
+      .returning();
 
   return result[0] ?? null;
 }
 
+
+/* ======================================================
+   FIND RENT BILLS BY OWNER
+====================================================== */
 
 export async function findRentBillsByOwner(
   dbClient,
@@ -151,6 +282,7 @@ export async function findRentBillsByOwner(
     ),
   ];
 
+
   if (status) {
     conditions.push(
       eq(
@@ -159,6 +291,7 @@ export async function findRentBillsByOwner(
       )
     );
   }
+
 
   return await dbClient
     .select({
@@ -229,13 +362,21 @@ export async function findRentBillsByOwner(
       )
     )
     .where(
-      and(...conditions)
+      and(
+        ...conditions
+      )
     )
     .orderBy(
-      desc(rentBills.dueDate)
+      desc(
+        rentBills.dueDate
+      )
     );
 }
 
+
+/* ======================================================
+   FIND RENT BILLS BY TENANT
+====================================================== */
 
 export async function findRentBillsByTenant(
   dbClient,
@@ -291,6 +432,7 @@ export async function findRentBillsByTenant(
           tenants.id,
           tenantId
         ),
+
         eq(
           tenants.ownerId,
           ownerId
@@ -305,116 +447,122 @@ export async function findRentBillsByTenant(
 }
 
 
+/* ======================================================
+   FIND RENT BILL DETAILS
+====================================================== */
+
 export async function findRentBillDetailsById(
   dbClient,
   billId,
   ownerId
 ) {
-  const result = await dbClient
-    .select({
-      id:
-        rentBills.id,
-
-      tenantId:
-        rentBills.tenantId,
-
-      billingPeriodStart:
-        rentBills.billingPeriodStart,
-
-      billingPeriodEnd:
-        rentBills.billingPeriodEnd,
-
-      dueDate:
-        rentBills.dueDate,
-
-      amountDue:
-        rentBills.amountDue,
-
-      amountPaid:
-        rentBills.amountPaid,
-
-      balanceAmount:
-        rentBills.balanceAmount,
-
-      status:
-        rentBills.status,
-
-      createdAt:
-        rentBills.createdAt,
-
-      updatedAt:
-        rentBills.updatedAt,
-
-      tenantName:
-        tenants.fullName,
-
-      tenantMobile:
-        tenants.mobile,
-
-      tenantStatus:
-        tenants.status,
-
-      roomId:
-        rooms.id,
-
-      roomNumber:
-        rooms.roomNumber,
-
-      floor:
-        rooms.floor,
-    })
-    .from(rentBills)
-    .innerJoin(
-      tenants,
-      eq(
-        rentBills.tenantId,
-        tenants.id
-      )
-    )
-    .leftJoin(
-      rooms,
-      eq(
-        tenants.roomId,
-        rooms.id
-      )
-    )
-    .where(
-      and(
-        eq(
+  const result =
+    await dbClient
+      .select({
+        id:
           rentBills.id,
-          billId
-        ),
+
+        tenantId:
+          rentBills.tenantId,
+
+        billingPeriodStart:
+          rentBills.billingPeriodStart,
+
+        billingPeriodEnd:
+          rentBills.billingPeriodEnd,
+
+        dueDate:
+          rentBills.dueDate,
+
+        amountDue:
+          rentBills.amountDue,
+
+        amountPaid:
+          rentBills.amountPaid,
+
+        balanceAmount:
+          rentBills.balanceAmount,
+
+        status:
+          rentBills.status,
+
+        createdAt:
+          rentBills.createdAt,
+
+        updatedAt:
+          rentBills.updatedAt,
+
+        tenantName:
+          tenants.fullName,
+
+        tenantMobile:
+          tenants.mobile,
+
+        tenantStatus:
+          tenants.status,
+
+        roomId:
+          rooms.id,
+
+        roomNumber:
+          rooms.roomNumber,
+
+        floor:
+          rooms.floor,
+      })
+      .from(rentBills)
+      .innerJoin(
+        tenants,
         eq(
-          tenants.ownerId,
-          ownerId
+          rentBills.tenantId,
+          tenants.id
         )
       )
-    )
-    .limit(1);
+      .leftJoin(
+        rooms,
+        eq(
+          tenants.roomId,
+          rooms.id
+        )
+      )
+      .where(
+        and(
+          eq(
+            rentBills.id,
+            billId
+          ),
+
+          eq(
+            tenants.ownerId,
+            ownerId
+          )
+        )
+      )
+      .limit(1);
 
   return result[0] ?? null;
 }
+
+
+/* ======================================================
+   RENT COLLECTION SUMMARY
+====================================================== */
 
 export async function findRentCollectionSummary(
   dbClient,
   ownerId
 ) {
-  const now =
-    new Date();
-
-  const monthStart =
-    new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      1
-    );
-
-  const nextMonthStart =
-    new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      1
-    );
+  /*
+   * paymentDate is PostgreSQL DATE.
+   *
+   * Therefore month boundaries must
+   * also be YYYY-MM-DD strings.
+   */
+  const {
+    monthStart,
+    nextMonthStart,
+  } =
+    getCurrentMonthRange();
 
 
   /* ================================================

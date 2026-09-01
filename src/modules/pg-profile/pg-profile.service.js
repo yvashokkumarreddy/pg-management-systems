@@ -195,22 +195,33 @@ async function formatProfile(
       profile.pgName,
 
     description:
-      profile.description,
+      profile.description ??
+      "",
 
     address:
-      profile.address,
+      profile.address ??
+      "",
 
     contactNumber:
-      profile.contactNumber,
+      profile.contactNumber ??
+      "",
+
+    googleMapsUrl:
+      profile.googleMapsUrl ??
+      "",
 
     amenities:
-      profile.amenities ?? [],
+      profile.amenities ??
+      [],
 
     roomTypes:
-      profile.roomTypes ?? [],
+      profile.roomTypes ??
+      [],
 
     isPublished:
-      profile.isPublished,
+      Boolean(
+        profile.isPublished
+      ),
 
     photos:
       formattedPhotos,
@@ -285,11 +296,17 @@ export async function createPgProfileService(
           data.contactNumber?.trim() ||
           null,
 
+        googleMapsUrl:
+          data.googleMapsUrl?.trim() ||
+          null,
+
         amenities:
-          data.amenities ?? [],
+          data.amenities ??
+          [],
 
         roomTypes:
-          data.roomTypes ?? [],
+          data.roomTypes ??
+          [],
 
         isPublished:
           data.isPublished ??
@@ -398,11 +415,24 @@ export async function updatePgProfileService(
   if (
     Object.prototype.hasOwnProperty.call(
       data,
+      "googleMapsUrl"
+    )
+  ) {
+    changes.googleMapsUrl =
+      data.googleMapsUrl?.trim() ||
+      null;
+  }
+
+
+  if (
+    Object.prototype.hasOwnProperty.call(
+      data,
       "amenities"
     )
   ) {
     changes.amenities =
-      data.amenities ?? [];
+      data.amenities ??
+      [];
   }
 
 
@@ -413,7 +443,8 @@ export async function updatePgProfileService(
     )
   ) {
     changes.roomTypes =
-      data.roomTypes ?? [];
+      data.roomTypes ??
+      [];
   }
 
 

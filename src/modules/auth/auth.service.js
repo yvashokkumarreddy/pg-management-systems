@@ -51,6 +51,8 @@ export async function getCurrentOwner() {
 
 
   if (!appUser) {
+    await supabase.auth.signOut();
+
     throw new UnauthorizedError(
       "Owner account is not linked"
     );
@@ -61,6 +63,8 @@ export async function getCurrentOwner() {
     appUser.status &&
     appUser.status !== "ACTIVE"
   ) {
+    await supabase.auth.signOut();
+
     throw new UnauthorizedError(
       "Owner account is inactive"
     );

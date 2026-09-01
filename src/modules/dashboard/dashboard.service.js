@@ -45,42 +45,47 @@ function startOfToday() {
 }
 
 
-function getCurrentMonthRange() {
+function getCurrentYearMonth() {
   const now =
     new Date();
 
-  const start =
-    new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      1
-    );
-
-  const end =
-    new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      1
-    );
-
   return {
-    start,
-    end,
+    year:
+      now.getFullYear(),
+
+    month:
+      now.getMonth() + 1,
   };
 }
 
 
 function isPaymentInCurrentMonth(
   paymentDate,
-  monthStart,
-  nextMonthStart
+  currentYear,
+  currentMonth
 ) {
-  const date =
-    new Date(paymentDate);
+  if (!paymentDate) {
+    return false;
+  }
 
+  const datePart =
+    String(paymentDate)
+      .slice(0, 10);
+
+  const [
+    year,
+    month,
+  ] =
+    datePart
+      .split("-")
+      .map(Number);
+console.log(
+  "isPaymentInCurrentMonth paymentDate:",
+  paymentDate, year === currentYear,
+    month === currentMonth,paymentDate,datePart,month,year,currentMonth,currentYear)
   return (
-    date >= monthStart &&
-    date < nextMonthStart
+    year === currentYear &&
+    month === currentMonth
   );
 }
 
@@ -88,25 +93,20 @@ function isPaymentInCurrentMonth(
 function calculateCurrentBillStatus(
   bill
 ) {
-//   const duePaise =
-//     moneyToPaise(
-//       bill.amountDue
-//     );
-
   const paidPaise =
     moneyToPaise(
       bill.amountPaid
     );
 
-    const balancePaise =
+  const balancePaise =
     Math.max(
-        moneyToPaise(
+      moneyToPaise(
         bill.amountDue
-        ) -
+      ) -
         moneyToPaise(
-            bill.amountPaid
+          bill.amountPaid
         ),
-        0
+      0
     );
 
   if (
@@ -195,6 +195,7 @@ export async function getDashboardService(
     ),
   ]);
 
+
   /*
    * -------------------------
    * ROOM / BED STATISTICS
@@ -216,12 +217,6 @@ export async function getDashboardService(
         ),
       0
     );
-
-  /*
-   * Only tenants attached
-   * to an ACTIVE room count
-   * toward current occupancy.
-   */
 
   const activeRoomIds =
     new Set(
@@ -314,13 +309,13 @@ export async function getDashboardService(
    */
 
   const {
-    start:
-      currentMonthStart,
+    year:
+      currentYear,
 
-    end:
-      nextMonthStart,
+    month:
+      currentMonth,
   } =
-    getCurrentMonthRange();
+    getCurrentYearMonth();
 
   let collectedLifetimePaise =
     0;
@@ -343,8 +338,8 @@ export async function getDashboardService(
     if (
       isPaymentInCurrentMonth(
         payment.paymentDate,
-        currentMonthStart,
-        nextMonthStart
+        currentYear,
+        currentMonth
       )
     ) {
       collectedThisMonthPaise +=
@@ -387,26 +382,21 @@ export async function getDashboardService(
     const bill
     of rentBills
   ) {
-    // const duePaise =
-    //   moneyToPaise(
-    //     bill.amountDue
-    //   );
-
     const paidPaise =
       moneyToPaise(
         bill.amountPaid
       );
 
     const balancePaise =
-        Math.max(
-            moneyToPaise(
-            bill.amountDue
-            ) -
-            moneyToPaise(
-                bill.amountPaid
-            ),
-            0
-        );
+      Math.max(
+        moneyToPaise(
+          bill.amountDue
+        ) -
+          moneyToPaise(
+            bill.amountPaid
+          ),
+        0
+      );
 
     const status =
       calculateCurrentBillStatus(
@@ -416,7 +406,9 @@ export async function getDashboardService(
     if (
       status === "PAID"
     ) {
-      paidBillCount += 1;
+      paidBillCount +=
+        1;
+
       continue;
     }
 
@@ -424,9 +416,11 @@ export async function getDashboardService(
       balancePaise;
 
     if (
-      status === "OVERDUE"
+      status ===
+      "OVERDUE"
     ) {
-      overdueBillCount += 1;
+      overdueBillCount +=
+        1;
 
       overdueAmountPaise +=
         balancePaise;
@@ -477,11 +471,6 @@ export async function getDashboardService(
       continue;
     }
 
-    /*
-     * Pending amount means
-     * outstanding but not overdue.
-     */
-
     pendingAmountPaise +=
       balancePaise;
 
@@ -500,178 +489,130 @@ export async function getDashboardService(
 
   /*
    * -------------------------
-   * RECENT PAYMENTS
-   * -------------------------
-   */
-
-  const recentPayments =
-    payments
-      .slice(0, 10)
-      .map(
-        (payment) => ({
-          paymentId:
-            payment.paymentId,
-
-          tenantId:
-            payment.tenantId,
-
-          tenantName:
-            payment.tenantName,
-
-          tenantMobile:
-            payment.tenantMobile,
-
-          roomId:
-            payment.roomId,
-
-          roomNumber:
-            payment.roomNumber,
-
-          rentBillId:
-            payment.rentBillId,
-
-          amount:
-            payment.amount,
-
-          paymentDate:
-            payment.paymentDate,
-
-          mode:
-            payment.mode,
-
-          notes:
-            payment.notes,
-
-          billingPeriodStart:
-            payment.billingPeriodStart,
-
-          billingPeriodEnd:
-            payment.billingPeriodEnd,
-
-          billDueDate:
-            payment.billDueDate,
-        })
-      );
-
-
-  /*
-   * -------------------------
    * FINAL DASHBOARD RESPONSE
    * -------------------------
    */
 
+
   return {
-    property: property
-    ? {
-        pgName: property.pgName,
-        address: property.address,
-      }
-    : null,
-  rooms: {
-    total:
-      totalRooms,
+    property:
+      property
+        ? {
+            pgName:
+              property.pgName,
 
-    occupied:
-      occupiedRooms,
+            address:
+              property.address,
+          }
+        : null,
 
-    vacant:
-      vacantRooms,
+    rooms: {
+      total:
+        totalRooms,
 
-    totalBeds,
+      occupied:
+        occupiedRooms,
 
-    occupiedBeds,
+      vacant:
+        vacantRooms,
 
-    availableBeds,
-  },
+      totalBeds,
 
-  tenants: {
-    current:
-      currentTenants,
+      occupiedBeds,
 
-    active:
-      activeTenants,
-
-    noticePeriod:
-      noticePeriodTenants,
-
-    archived:
-      archivedTenants,
-  },
-
-  rent: {
-    collectedThisMonth:
-      paiseToMoney(
-        collectedThisMonthPaise
-      ),
-
-    collectedLifetime:
-      paiseToMoney(
-        collectedLifetimePaise
-      ),
-
-    outstandingAmount:
-      paiseToMoney(
-        totalOutstandingPaise
-      ),
-
-    pendingAmount:
-      paiseToMoney(
-        pendingAmountPaise
-      ),
-
-    overdueAmount:
-      paiseToMoney(
-        overdueAmountPaise
-      ),
-
-    bills: {
-      pending:
-        pendingBillCount,
-
-      partial:
-        partialBillCount,
-
-      overdue:
-        overdueBillCount,
-
-      paid:
-        paidBillCount,
+      availableBeds,
     },
-  },
 
-  recentPayments:
-    payments
-      .slice(0, 10)
-      .map(
-        (payment) => ({
-          paymentId:
-            payment.paymentId,
+    tenants: {
+      current:
+        currentTenants,
 
-          tenantId:
-            payment.tenantId,
+      active:
+        activeTenants,
 
-          tenantName:
-            payment.tenantName,
+      noticePeriod:
+        noticePeriodTenants,
 
-          roomNumber:
-            payment.roomNumber,
+      archived:
+        archivedTenants,
+    },
 
-          rentBillId:
-            payment.rentBillId,
+    rent: {
+      collectedThisMonth:
+        paiseToMoney(
+          collectedThisMonthPaise
+        ),
 
-          amount:
-            payment.amount,
+      collectedLifetime:
+        paiseToMoney(
+          collectedLifetimePaise
+        ),
 
-          paymentDate:
-            payment.paymentDate,
+      outstandingAmount:
+        paiseToMoney(
+          totalOutstandingPaise
+        ),
 
-          mode:
-            payment.mode,
-        })
-      ),
+      pendingAmount:
+        paiseToMoney(
+          pendingAmountPaise
+        ),
 
-  overdueBills:
-    overdueBills
-      .slice(0, 10),
-};
+      overdueAmount:
+        paiseToMoney(
+          overdueAmountPaise
+        ),
+
+      bills: {
+        pending:
+          pendingBillCount,
+
+        partial:
+          partialBillCount,
+
+        overdue:
+          overdueBillCount,
+
+        paid:
+          paidBillCount,
+      },
+    },
+
+    recentPayments:
+      payments
+        .slice(0, 10)
+        .map(
+          (
+            payment
+          ) => ({
+            paymentId:
+              payment.paymentId,
+
+            tenantId:
+              payment.tenantId,
+
+            tenantName:
+              payment.tenantName,
+
+            roomNumber:
+              payment.roomNumber,
+
+            rentBillId:
+              payment.rentBillId,
+
+            amount:
+              payment.amount,
+
+            paymentDate:
+              payment.paymentDate,
+
+            mode:
+              payment.mode,
+          })
+        ),
+
+    overdueBills:
+      overdueBills
+        .slice(0, 10),
+  };
 }

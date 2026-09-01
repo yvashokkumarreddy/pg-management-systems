@@ -120,7 +120,9 @@ export async function DELETE(
   try {
     const { ownerId } =
   await getCurrentOwner();
-
+  const {
+      photoId,
+    } = await params;
 
     if (!ownerId) {
       return NextResponse.json(
@@ -134,7 +136,6 @@ export async function DELETE(
         }
       );
     }
-
 
     const result =
       await deletePgPhotoService(

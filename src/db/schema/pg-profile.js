@@ -40,18 +40,31 @@ export const pgProfiles = pgTable(
       length: 200,
     }).notNull(),
 
-    description: varchar("description", {
-      length: 2000,
-    }),
+    description: varchar(
+      "description",
+      {
+        length: 2000,
+      }
+    ),
 
-    address: varchar("address", {
-      length: 500,
-    }),
+    address: varchar(
+      "address",
+      {
+        length: 500,
+      }
+    ),
 
     contactNumber: varchar(
       "contact_number",
       {
         length: 20,
+      }
+    ),
+
+    googleMapsUrl: varchar(
+      "google_maps_url",
+      {
+        length: 1000,
       }
     ),
 

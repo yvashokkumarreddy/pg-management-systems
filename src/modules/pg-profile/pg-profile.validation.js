@@ -18,6 +18,122 @@ const ALLOWED_PHOTO_MIME_TYPES = [
 ];
 
 
+function isValidGoogleMapsUrl(
+  value
+) {
+  if (!value) {
+    return true;
+  }
+
+  try {
+    const url =
+      new URL(value);
+
+    const host =
+      url.hostname.toLowerCase();
+
+    const pathname =
+      url.pathname.toLowerCase();
+
+    if (
+      host ===
+        "maps.app.goo.gl"
+    ) {
+      return true;
+    }
+
+    if (
+      host ===
+        "goo.gl" &&
+      pathname.startsWith(
+        "/maps"
+      )
+    ) {
+      return true;
+    }
+
+    if (
+      host ===
+        "maps.google.com"
+    ) {
+      return true;
+    }
+
+    if (
+      (
+        host ===
+          "google.com" ||
+        host ===
+          "www.google.com"
+      ) &&
+      pathname.startsWith(
+        "/maps"
+      )
+    ) {
+      return true;
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+
+function validateGoogleMapsUrl(
+  data,
+  errors
+) {
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      data,
+      "googleMapsUrl"
+    )
+  ) {
+    return;
+  }
+
+  if (
+    data.googleMapsUrl != null &&
+    typeof data.googleMapsUrl !==
+      "string"
+  ) {
+    errors.googleMapsUrl =
+      "Google Maps URL must be a string";
+
+    return;
+  }
+
+  if (
+    typeof data.googleMapsUrl ===
+      "string" &&
+    data.googleMapsUrl.length >
+      1000
+  ) {
+    errors.googleMapsUrl =
+      "Google Maps URL must not exceed 1000 characters";
+
+    return;
+  }
+
+  const googleMapsUrl =
+    typeof data.googleMapsUrl ===
+    "string"
+      ? data.googleMapsUrl.trim()
+      : "";
+
+  if (
+    googleMapsUrl &&
+    !isValidGoogleMapsUrl(
+      googleMapsUrl
+    )
+  ) {
+    errors.googleMapsUrl =
+      "Please enter a valid Google Maps location URL";
+  }
+}
+
+
 export function validateCreatePgProfile(
   data
 ) {
@@ -25,7 +141,8 @@ export function validateCreatePgProfile(
 
   if (
     !data.pgName ||
-    typeof data.pgName !== "string" ||
+    typeof data.pgName !==
+      "string" ||
     !data.pgName.trim()
   ) {
     errors.pgName =
@@ -34,7 +151,10 @@ export function validateCreatePgProfile(
 
   if (
     data.pgName &&
-    data.pgName.trim().length > 200
+    typeof data.pgName ===
+      "string" &&
+    data.pgName.trim().length >
+      200
   ) {
     errors.pgName =
       "PG name must not exceed 200 characters";
@@ -42,15 +162,18 @@ export function validateCreatePgProfile(
 
   if (
     data.description != null &&
-    typeof data.description !== "string"
+    typeof data.description !==
+      "string"
   ) {
     errors.description =
       "Description must be a string";
   }
 
   if (
-    data.description &&
-    data.description.length > 2000
+    typeof data.description ===
+      "string" &&
+    data.description.length >
+      2000
   ) {
     errors.description =
       "Description must not exceed 2000 characters";
@@ -58,15 +181,18 @@ export function validateCreatePgProfile(
 
   if (
     data.address != null &&
-    typeof data.address !== "string"
+    typeof data.address !==
+      "string"
   ) {
     errors.address =
       "Address must be a string";
   }
 
   if (
-    data.address &&
-    data.address.length > 500
+    typeof data.address ===
+      "string" &&
+    data.address.length >
+      500
   ) {
     errors.address =
       "Address must not exceed 500 characters";
@@ -74,19 +200,27 @@ export function validateCreatePgProfile(
 
   if (
     data.contactNumber != null &&
-    typeof data.contactNumber !== "string"
+    typeof data.contactNumber !==
+      "string"
   ) {
     errors.contactNumber =
       "Contact number must be a string";
   }
 
   if (
-    data.contactNumber &&
-    data.contactNumber.length > 20
+    typeof data.contactNumber ===
+      "string" &&
+    data.contactNumber.length >
+      20
   ) {
     errors.contactNumber =
       "Contact number must not exceed 20 characters";
   }
+
+  validateGoogleMapsUrl(
+    data,
+    errors
+  );
 
   if (
     data.amenities != null &&
@@ -119,7 +253,9 @@ export function validateCreatePgProfile(
 
   return {
     isValid:
-      Object.keys(errors).length === 0,
+      Object.keys(
+        errors
+      ).length === 0,
 
     errors,
   };
@@ -134,6 +270,7 @@ export function validateUpdatePgProfile(
     "description",
     "address",
     "contactNumber",
+    "googleMapsUrl",
     "amenities",
     "roomTypes",
     "isPublished",
@@ -159,11 +296,6 @@ export function validateUpdatePgProfile(
     };
   }
 
-  /*
-   * Reuse create validation.
-   * pgName isn't mandatory for PATCH
-   * unless supplied.
-   */
   const errors = {};
 
 
@@ -174,7 +306,8 @@ export function validateUpdatePgProfile(
     )
   ) {
     if (
-      typeof data.pgName !== "string" ||
+      typeof data.pgName !==
+        "string" ||
       !data.pgName.trim()
     ) {
       errors.pgName =
@@ -182,7 +315,10 @@ export function validateUpdatePgProfile(
     }
 
     if (
-      data.pgName?.trim().length > 200
+      typeof data.pgName ===
+        "string" &&
+      data.pgName.trim().length >
+        200
     ) {
       errors.pgName =
         "PG name must not exceed 200 characters";
@@ -192,7 +328,8 @@ export function validateUpdatePgProfile(
 
   if (
     data.description != null &&
-    typeof data.description !== "string"
+    typeof data.description !==
+      "string"
   ) {
     errors.description =
       "Description must be a string";
@@ -200,8 +337,10 @@ export function validateUpdatePgProfile(
 
 
   if (
-    data.description &&
-    data.description.length > 2000
+    typeof data.description ===
+      "string" &&
+    data.description.length >
+      2000
   ) {
     errors.description =
       "Description must not exceed 2000 characters";
@@ -210,7 +349,8 @@ export function validateUpdatePgProfile(
 
   if (
     data.address != null &&
-    typeof data.address !== "string"
+    typeof data.address !==
+      "string"
   ) {
     errors.address =
       "Address must be a string";
@@ -218,8 +358,10 @@ export function validateUpdatePgProfile(
 
 
   if (
-    data.address &&
-    data.address.length > 500
+    typeof data.address ===
+      "string" &&
+    data.address.length >
+      500
   ) {
     errors.address =
       "Address must not exceed 500 characters";
@@ -228,7 +370,8 @@ export function validateUpdatePgProfile(
 
   if (
     data.contactNumber != null &&
-    typeof data.contactNumber !== "string"
+    typeof data.contactNumber !==
+      "string"
   ) {
     errors.contactNumber =
       "Contact number must be a string";
@@ -236,12 +379,20 @@ export function validateUpdatePgProfile(
 
 
   if (
-    data.contactNumber &&
-    data.contactNumber.length > 20
+    typeof data.contactNumber ===
+      "string" &&
+    data.contactNumber.length >
+      20
   ) {
     errors.contactNumber =
       "Contact number must not exceed 20 characters";
   }
+
+
+  validateGoogleMapsUrl(
+    data,
+    errors
+  );
 
 
   if (
@@ -278,7 +429,9 @@ export function validateUpdatePgProfile(
 
   return {
     isValid:
-      Object.keys(errors).length === 0,
+      Object.keys(
+        errors
+      ).length === 0,
 
     errors,
   };
@@ -349,7 +502,9 @@ export function validatePgPhoto(
 
   return {
     isValid:
-      Object.keys(errors).length === 0,
+      Object.keys(
+        errors
+      ).length === 0,
 
     errors,
   };
@@ -363,7 +518,9 @@ export function validateSortOrder(
     Number(value);
 
   if (
-    !Number.isInteger(sortOrder) ||
+    !Number.isInteger(
+      sortOrder
+    ) ||
     sortOrder < 0
   ) {
     return {

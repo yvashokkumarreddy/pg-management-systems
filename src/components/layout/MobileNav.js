@@ -1,13 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+
+import {
+  usePathname,
+} from "next/navigation";
+
 import {
   Home,
   DoorOpen,
   Users,
-  Menu,
+  Wallet,
+  Building2,
 } from "lucide-react";
+
 
 const items = [
   {
@@ -26,39 +32,96 @@ const items = [
     icon: Users,
   },
   {
-    label: "More",
+    label: "Rent",
+    href: "/rent",
+    icon: Wallet,
+  },
+  {
+    label: "Profile",
     href: "/pg-profile",
-    icon: Menu,
+    icon: Building2,
   },
 ];
 
+
 export default function MobileNav() {
-  const pathname = usePathname();
+  const pathname =
+    usePathname();
+
+
+  function isActive(
+    href
+  ) {
+    if (
+      href === "/dashboard"
+    ) {
+      return (
+        pathname ===
+        "/dashboard"
+      );
+    }
+
+    return (
+      pathname === href ||
+      pathname.startsWith(
+        `${href}/`
+      )
+    );
+  }
+
 
   return (
-    <nav className="mobile-nav">
-      {items.map((item) => {
-        const Icon = item.icon;
+    <nav
+      className="mobile-nav"
+      aria-label="Mobile navigation"
+    >
+      {items.map(
+        (item) => {
+          const Icon =
+            item.icon;
 
-        const active =
-          item.href === "/dashboard"
-            ? pathname === "/dashboard"
-            : pathname.startsWith(item.href);
+          const active =
+            isActive(
+              item.href
+            );
 
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`mobile-nav-link ${
-              active ? "active" : ""
-            }`}
-          >
-            <Icon size={20} />
+          return (
+            <Link
+              key={
+                item.href
+              }
+              href={
+                item.href
+              }
+              className={`mobile-nav-link ${
+                active
+                  ? "active"
+                  : ""
+              }`}
+              aria-current={
+                active
+                  ? "page"
+                  : undefined
+              }
+            >
+              <Icon
+                size={20}
+                strokeWidth={
+                  active
+                    ? 2.2
+                    : 1.8
+                }
+              />
 
-            <span>{item.label}</span>
-          </Link>
-        );
-      })}
+              <span>
+                {
+                  item.label
+                }
+              </span>
+            </Link>
+          );
+        }
+      )}
     </nav>
   );
 }

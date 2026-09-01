@@ -12,18 +12,14 @@ export async function POST() {
     const supabase =
       await createClient();
 
-
     const {
       error,
     } =
-      await supabase.auth
-        .signOut();
-
+      await supabase.auth.signOut();
 
     if (error) {
       throw error;
     }
-
 
     return NextResponse.json({
       success: true,
@@ -32,10 +28,9 @@ export async function POST() {
     });
   } catch (error) {
     console.error(
-      "Logout error:",
+      "Logout route error:",
       error
     );
-
 
     return NextResponse.json(
       {

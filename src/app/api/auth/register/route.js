@@ -24,11 +24,13 @@ import {
 export async function POST(
   request
 ) {
-  let authUserId = null;
+  let authUserId =
+    null;
 
   try {
     const body =
       await request.json();
+
 
     const email =
       body.email
@@ -41,6 +43,37 @@ export async function POST(
     const name =
       body.name
         ?.trim();
+
+
+    if (!name) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Name is required",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+
+    if (
+      name.length >
+      150
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Name is too long",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
 
 
     if (!email) {
@@ -75,11 +108,15 @@ export async function POST(
 
 
     /*
-     * Check application users table.
+     * Check whether this email already
+     * belongs to an application owner.
      */
     const existingUsers =
       await db
-        .select()
+        .select({
+          id:
+            users.id,
+        })
         .from(users)
         .where(
           eq(
@@ -91,7 +128,8 @@ export async function POST(
 
 
     if (
-      existingUsers.length > 0
+      existingUsers.length >
+      0
     ) {
       return NextResponse.json(
         {
@@ -107,7 +145,11 @@ export async function POST(
 
 
     /*
-     * Create Supabase Auth user.
+     * Create the Supabase Auth user.
+     *
+     * Email is currently confirmed
+     * immediately so registration can
+     * be followed by normal login.
      */
     const {
       data:
@@ -122,15 +164,11 @@ export async function POST(
 
           password,
 
-          /*
-           * For current development:
-           * allow immediate login.
-           */
-          email_confirm: true,
+          email_confirm:
+            true,
 
           user_metadata: {
-            name:
-              name || null,
+            name,
           },
         });
 
@@ -144,13 +182,47 @@ export async function POST(
         authError
       );
 
+
+      /*
+       * Supabase may already contain
+       * this email even if the local
+       * users table does not.
+       */
+      const authMessage =
+        authError?.message
+          ?.toLowerCase() ||
+        "";
+
+
+      if (
+        authMessage.includes(
+          "already"
+        ) ||
+        authMessage.includes(
+          "registered"
+        ) ||
+        authMessage.includes(
+          "exists"
+        )
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "An account with this email already exists",
+          },
+          {
+            status: 409,
+          }
+        );
+      }
+
+
       return NextResponse.json(
         {
           success: false,
-
           message:
-            authError?.message ||
-            "Failed to create authentication user",
+            "Unable to create account",
         },
         {
           status: 400,
@@ -164,7 +236,8 @@ export async function POST(
 
 
     /*
-     * Create application owner.
+     * Create the linked application
+     * owner row.
      */
     const ownerId =
       crypto.randomUUID();
@@ -182,18 +255,21 @@ export async function POST(
 
             email,
 
-            /*
-             * Adapt this field if your
-             * users schema uses another
-             * name such as fullName.
-             */
-            name:
-              name || null,
+            name,
 
             status:
               "ACTIVE",
           })
-          .returning();
+          .returning({
+            id:
+              users.id,
+
+            email:
+              users.email,
+
+            status:
+              users.status,
+          });
 
 
       const owner =
@@ -211,9 +287,6 @@ export async function POST(
             id:
               owner.id,
 
-            authUserId:
-              owner.authUserId,
-
             email:
               owner.email,
 
@@ -227,18 +300,45 @@ export async function POST(
       );
     } catch (dbError) {
       /*
-       * Important cleanup:
+       * Auth creation succeeded but
+       * application owner creation
+       * failed.
        *
-       * Auth user was created,
-       * but DB owner creation failed.
-       *
-       * Remove Auth user so we don't
-       * leave an orphan account.
+       * Remove the Supabase Auth user
+       * to avoid an orphaned account.
        */
-      await supabaseAdmin.auth.admin
-        .deleteUser(
-          authUserId
+      try {
+        const {
+          error:
+            cleanupError,
+        } =
+          await supabaseAdmin
+            .auth
+            .admin
+            .deleteUser(
+              authUserId
+            );
+
+
+        if (
+          cleanupError
+        ) {
+          console.error(
+            "Failed to clean up Supabase Auth user:",
+            authUserId,
+            cleanupError
+          );
+        }
+      } catch (
+        cleanupError
+      ) {
+        console.error(
+          "Unexpected auth cleanup error:",
+          authUserId,
+          cleanupError
         );
+      }
+
 
       throw dbError;
     }
@@ -252,9 +352,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-
         message:
-          error.message ||
           "Failed to register owner",
       },
       {

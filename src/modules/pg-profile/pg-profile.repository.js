@@ -163,6 +163,10 @@ export async function findPgPhotoForOwner(
   photoId,
   ownerId
 ) {
+  console.log(
+    "Finding PG photo for owner:",
+    { photoId, ownerId }
+  );
   const result =
     await dbClient
       .select({

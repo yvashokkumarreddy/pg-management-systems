@@ -13,6 +13,26 @@ import {
 } from "./payment.repository.js";
 
 
+function getTodayDateString() {
+  const now = new Date();
+
+  const year =
+    now.getFullYear();
+
+  const month =
+    String(
+      now.getMonth() + 1
+    ).padStart(2, "0");
+
+  const day =
+    String(
+      now.getDate()
+    ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+
 function calculateBillStatus({
   amountDue,
   amountPaid,
@@ -28,29 +48,18 @@ function calculateBillStatus({
     return "PAID";
   }
 
-  const dueDateValue =
-    new Date(dueDate);
-
-  const now =
-    new Date();
-
+  /*
+   * dueDate is a PostgreSQL DATE
+   * represented as YYYY-MM-DD.
+   *
+   * Compare date strings directly so
+   * timezone conversion cannot shift
+   * the business date.
+   */
   const today =
-    new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate()
-    );
+    getTodayDateString();
 
-  const billDueDate =
-    new Date(
-      dueDateValue.getFullYear(),
-      dueDateValue.getMonth(),
-      dueDateValue.getDate()
-    );
-
-  if (
-    billDueDate < today
-  ) {
+  if (dueDate < today) {
     return "OVERDUE";
   }
 
@@ -69,13 +78,21 @@ export async function createPaymentService(
     "Creating payment with data:",
     data
   );
+
   const tenant =
     await findTenantForPayment(
       db,
       data.tenantId,
       data.ownerId
     );
-console.log("Tenant found:", tenant,data.tenantId,data.ownerId);
+
+  console.log(
+    "Tenant found:",
+    tenant,
+    data.tenantId,
+    data.ownerId
+  );
+
   if (!tenant) {
     throw new Error(
       "Tenant not found"
@@ -188,10 +205,15 @@ console.log("Tenant found:", tenant,data.tenantId,data.ownerId);
                 paymentAmount
               ),
 
+            /*
+             * Keep payment date as
+             * YYYY-MM-DD.
+             *
+             * Do NOT use:
+             * new Date(data.paymentDate)
+             */
             paymentDate:
-              new Date(
-                data.paymentDate
-              ),
+              data.paymentDate,
 
             mode:
               data.mode,
