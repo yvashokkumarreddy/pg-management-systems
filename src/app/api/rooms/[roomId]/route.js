@@ -3,12 +3,14 @@ import { NextResponse } from "next/server";
 import {
   archiveRoomService,
   getRoomByIdService,
+  restoreRoomService,
   updateRoomService,
 } from "@/modules/rooms/room.service";
 
 import {
   validateUpdateRoom,
 } from "@/modules/rooms/room.validation";
+import { getCurrentOwner } from "@/modules/auth/auth.service";
 
 
 export async function GET(
@@ -18,11 +20,8 @@ export async function GET(
   try {
     const { roomId } = await params;
 
-    const { searchParams } =
-      new URL(request.url);
-
-    const ownerId =
-      searchParams.get("ownerId");
+    const { ownerId } =
+  await getCurrentOwner();
 
     if (!ownerId) {
       return NextResponse.json(
@@ -79,41 +78,26 @@ export async function PATCH(
   { params }
 ) {
   try {
-    const { roomId } = await params;
+    const { ownerId } =
+      await getCurrentOwner();
 
-    const { searchParams } =
-      new URL(request.url);
+    const { roomId } =
+      await params;
 
-    const ownerId =
-      searchParams.get("ownerId");
+    const body =
+      await request.json();
 
-    if (!ownerId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Owner ID is required",
-        },
-        { status: 400 }
-      );
-    }
+    if (body.status === "ACTIVE") {
+      const room =
+        await restoreRoomService(
+          roomId,
+          ownerId
+        );
 
-    const body = await request.json();
-
-    const validation =
-      validateUpdateRoom(body);
-
-    if (!validation.isValid) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Validation failed",
-          errors:
-            validation.errors,
-        },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        success: true,
+        data: room,
+      });
     }
 
     const room =
@@ -125,48 +109,10 @@ export async function PATCH(
 
     return NextResponse.json({
       success: true,
-      message:
-        "Room updated successfully",
       data: room,
     });
   } catch (error) {
-    console.error(
-      "Update room error:",
-      error
-    );
-
-    let status = 500;
-
-    if (
-      error.message ===
-      "Room not found"
-    ) {
-      status = 404;
-    } else if (
-      error.message ===
-      "Room number already exists"
-    ) {
-      status = 409;
-    } else if (
-      error.message.includes(
-        "Capacity cannot"
-      ) ||
-      error.message.includes(
-        "Archived"
-      )
-    ) {
-      status = 400;
-    }
-
-    return NextResponse.json(
-      {
-        success: false,
-        message:
-          error.message ||
-          "Failed to update room",
-      },
-      { status }
-    );
+    // keep your existing error handling
   }
 }
 
@@ -178,11 +124,8 @@ export async function DELETE(
   try {
     const { roomId } = await params;
 
-    const { searchParams } =
-      new URL(request.url);
-
-    const ownerId =
-      searchParams.get("ownerId");
+    const { ownerId } =
+  await getCurrentOwner();
 
     if (!ownerId) {
       return NextResponse.json(

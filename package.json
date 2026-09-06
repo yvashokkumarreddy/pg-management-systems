@@ -18,8 +18,11 @@
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.112.4",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
+    "lucide-react": "^1.35.0",
     "next": "latest",
     "postgres": "^3.4.9",
     "react": "latest",

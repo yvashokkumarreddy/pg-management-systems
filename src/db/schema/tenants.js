@@ -2,31 +2,44 @@ import {
   pgTable,
   varchar,
   timestamp,
+  date,
   decimal,
   pgEnum,
   index,
+  integer,
 } from "drizzle-orm/pg-core";
 
 import { users } from "./users.js";
 import { rooms } from "./rooms.js";
 
-export const tenantStatusEnum = pgEnum("tenant_status", [
-  "ACTIVE",
-  "NOTICE_PERIOD",
-  "ARCHIVED",
-]);
+
+export const tenantStatusEnum =
+  pgEnum(
+    "tenant_status",
+    [
+      "ACTIVE",
+      "NOTICE_PERIOD",
+      "ARCHIVED",
+    ]
+  );
+
 
 export const tenants = pgTable(
   "tenants",
   {
-    id: varchar("id", { length: 36 }).primaryKey(),
+    id: varchar("id", {
+      length: 36,
+    }).primaryKey(),
 
-    ownerId: varchar("owner_id", { length: 36 })
+    ownerId: varchar("owner_id", {
+      length: 36,
+    })
       .notNull()
       .references(() => users.id),
 
-    roomId: varchar("room_id", { length: 36 })
-      .references(() => rooms.id),
+    roomId: varchar("room_id", {
+      length: 36,
+    }).references(() => rooms.id),
 
     fullName: varchar("full_name", {
       length: 150,
@@ -36,77 +49,145 @@ export const tenants = pgTable(
       length: 20,
     }).notNull(),
 
-    dateOfBirth: timestamp("date_of_birth", {
-      withTimezone: true,
-    }),
-
-    emergencyContactName: varchar(
-      "emergency_contact_name",
-      { length: 150 }
+    // Calendar date - no timezone conversion
+    dateOfBirth: date(
+      "date_of_birth"
     ),
 
-    emergencyContactPhone: varchar(
-      "emergency_contact_phone",
-      { length: 20 }
+    emergencyContactName:
+      varchar(
+        "emergency_contact_name",
+        {
+          length: 150,
+        }
+      ),
+
+    emergencyContactPhone:
+      varchar(
+        "emergency_contact_phone",
+        {
+          length: 20,
+        }
+      ),
+
+    officeName: varchar(
+      "office_name",
+      {
+        length: 200,
+      }
     ),
 
-    officeName: varchar("office_name", {
-      length: 200,
-    }),
-
-    officeAddress: varchar("office_address", {
-      length: 500,
-    }),
+    officeAddress: varchar(
+      "office_address",
+      {
+        length: 500,
+      }
+    ),
 
     permanentAddress: varchar(
       "permanent_address",
-      { length: 500 }
+      {
+        length: 500,
+      }
     ),
 
-    dateOfJoining: timestamp("date_of_joining", {
-      withTimezone: true,
-    }).notNull(),
+    /*
+     * Historical joining date.
+     *
+     * This must NOT be changed simply
+     * because the tenant changes their
+     * monthly rent/payment cycle.
+     */
+    dateOfJoining: date(
+      "date_of_joining"
+    ).notNull(),
 
-    dateOfLeaving: timestamp("date_of_leaving", {
-      withTimezone: true,
-    }),
+    // Calendar date - no timezone conversion
+    dateOfLeaving: date(
+      "date_of_leaving"
+    ),
+    noticeGivenDate: date(
+  "notice_given_date"
+),
 
-    monthlyRent: decimal("monthly_rent", {
-      precision: 10,
-      scale: 2,
-    }).notNull(),
+plannedVacatingDate: date(
+  "planned_vacating_date"
+),
 
-    status: tenantStatusEnum("status")
-      .notNull()
-      .default("ACTIVE"),
+    /*
+     * Permanent recurring rent-cycle
+     * anchor.
+     *
+     * Examples:
+     *
+     * 3  = cycle normally starts on 3rd
+     * 15 = cycle normally starts on 15th
+     * 31 = month-end clamping is applied
+     *      for shorter months.
+     */
+    rentCycleDay: integer(
+      "rent_cycle_day"
+    ).notNull(),
 
-    createdAt: timestamp("created_at", {
-      withTimezone: true,
-    })
+    monthlyRent: decimal(
+      "monthly_rent",
+      {
+        precision: 10,
+        scale: 2,
+      }
+    ).notNull(),
+
+    status:
+      tenantStatusEnum("status")
+        .notNull()
+        .default("ACTIVE"),
+
+    // Actual timestamp - keep timezone
+    createdAt: timestamp(
+      "created_at",
+      {
+        withTimezone: true,
+      }
+    )
       .notNull()
       .defaultNow(),
 
-    updatedAt: timestamp("updated_at", {
-      withTimezone: true,
-    })
+    // Actual timestamp - keep timezone
+    updatedAt: timestamp(
+      "updated_at",
+      {
+        withTimezone: true,
+      }
+    )
       .notNull()
       .defaultNow(),
   },
+
   (table) => ({
-    ownerIdx: index("tenants_owner_idx").on(
+    ownerIdx: index(
+      "tenants_owner_idx"
+    ).on(
       table.ownerId
     ),
 
-    roomIdx: index("tenants_room_idx").on(
+    roomIdx: index(
+      "tenants_room_idx"
+    ).on(
       table.roomId
     ),
 
-    statusIdx: index("tenants_status_idx").on(
+    statusIdx: index(
+      "tenants_status_idx"
+    ).on(
       table.status
     ),
+    
 
-    mobileIdx: index("tenants_mobile_idx").on(
+    mobileIdx: index(
+      "tenants_mobile_idx"
+    ).on(
       table.mobile
     ),
+    
   })
 );
