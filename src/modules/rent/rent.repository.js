@@ -29,10 +29,12 @@ function formatDate({
       4,
       "0"
     ),
+
     String(month).padStart(
       2,
       "0"
     ),
+
     String(day).padStart(
       2,
       "0"
@@ -41,15 +43,90 @@ function formatDate({
 }
 
 
+function getIndiaDateParts() {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Asia/Kolkata",
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit",
+      }
+    ).formatToParts(
+      new Date()
+    );
+
+
+  const values =
+    {};
+
+
+  for (
+    const part of
+    parts
+  ) {
+    if (
+      part.type !==
+      "literal"
+    ) {
+      values[
+        part.type
+      ] =
+        part.value;
+    }
+  }
+
+
+  return {
+    year:
+      Number(
+        values.year
+      ),
+
+    month:
+      Number(
+        values.month
+      ),
+
+    day:
+      Number(
+        values.day
+      ),
+  };
+}
+
+
+function getTodayDateString() {
+  const {
+    year,
+    month,
+    day,
+  } =
+    getIndiaDateParts();
+
+
+  return formatDate({
+    year,
+    month,
+    day,
+  });
+}
+
+
 function getCurrentMonthRange() {
-  const now =
-    new Date();
-
-  const year =
-    now.getFullYear();
-
-  const month =
-    now.getMonth() + 1;
+  const {
+    year,
+    month,
+  } =
+    getIndiaDateParts();
 
 
   const monthStart =
@@ -63,6 +140,7 @@ function getCurrentMonthRange() {
   let nextYear =
     year;
 
+
   let nextMonth =
     month + 1;
 
@@ -70,8 +148,11 @@ function getCurrentMonthRange() {
   if (
     nextMonth === 13
   ) {
-    nextMonth = 1;
-    nextYear += 1;
+    nextMonth =
+      1;
+
+    nextYear +=
+      1;
   }
 
 
@@ -83,7 +164,8 @@ function getCurrentMonthRange() {
       month:
         nextMonth,
 
-      day: 1,
+      day:
+        1,
     });
 
 
@@ -127,13 +209,24 @@ export async function findTenantForRent(
         dateOfLeaving:
           tenants.dateOfLeaving,
 
+        noticeGivenDate:
+          tenants.noticeGivenDate,
+
+        plannedVacatingDate:
+          tenants.plannedVacatingDate,
+
+        rentCycleDay:
+          tenants.rentCycleDay,
+
         monthlyRent:
           tenants.monthlyRent,
 
         status:
           tenants.status,
       })
-      .from(tenants)
+      .from(
+        tenants
+      )
       .where(
         and(
           eq(
@@ -149,7 +242,68 @@ export async function findTenantForRent(
       )
       .limit(1);
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
+}
+
+
+/* ======================================================
+   FIND TENANTS ELIGIBLE FOR SCHEDULED RENT
+====================================================== */
+
+export async function findTenantsForScheduledRent(
+  dbClient
+) {
+  return await dbClient
+    .select({
+      id:
+        tenants.id,
+
+      ownerId:
+        tenants.ownerId,
+
+      roomId:
+        tenants.roomId,
+
+      fullName:
+        tenants.fullName,
+
+      dateOfJoining:
+        tenants.dateOfJoining,
+
+      dateOfLeaving:
+        tenants.dateOfLeaving,
+
+      noticeGivenDate:
+        tenants.noticeGivenDate,
+
+      plannedVacatingDate:
+        tenants.plannedVacatingDate,
+
+      rentCycleDay:
+        tenants.rentCycleDay,
+
+      monthlyRent:
+        tenants.monthlyRent,
+
+      status:
+        tenants.status,
+    })
+    .from(
+      tenants
+    )
+    .where(
+      sql`
+        ${tenants.status}
+        IN (
+          'ACTIVE',
+          'NOTICE_PERIOD'
+        )
+      `
+    );
 }
 
 
@@ -163,9 +317,14 @@ export async function createRentBill(
 ) {
   const result =
     await dbClient
-      .insert(rentBills)
-      .values(data)
+      .insert(
+        rentBills
+      )
+      .values(
+        data
+      )
       .returning();
+
 
   return result[0];
 }
@@ -182,7 +341,9 @@ export async function findLatestRentBillByTenant(
   const result =
     await dbClient
       .select()
-      .from(rentBills)
+      .from(
+        rentBills
+      )
       .where(
         eq(
           rentBills.tenantId,
@@ -196,7 +357,11 @@ export async function findLatestRentBillByTenant(
       )
       .limit(1);
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -212,7 +377,9 @@ export async function findRentBillByTenantAndStart(
   const result =
     await dbClient
       .select()
-      .from(rentBills)
+      .from(
+        rentBills
+      )
       .where(
         and(
           eq(
@@ -228,7 +395,11 @@ export async function findRentBillByTenantAndStart(
       )
       .limit(1);
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -243,14 +414,12 @@ export async function updateRentBillStatus(
 ) {
   const result =
     await dbClient
-      .update(rentBills)
+      .update(
+        rentBills
+      )
       .set({
         status,
 
-        /*
-         * updatedAt is an actual event
-         * timestamp, so Date is correct.
-         */
         updatedAt:
           new Date(),
       })
@@ -262,12 +431,17 @@ export async function updateRentBillStatus(
       )
       .returning();
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
 /* ======================================================
-   FIND RENT BILLS BY OWNER
+   FIND ALL RENT BILLS BY OWNER
+   HISTORICAL / DETAIL USE
 ====================================================== */
 
 export async function findRentBillsByOwner(
@@ -275,15 +449,18 @@ export async function findRentBillsByOwner(
   ownerId,
   status = null
 ) {
-  const conditions = [
-    eq(
-      tenants.ownerId,
-      ownerId
-    ),
-  ];
+  const conditions =
+    [
+      eq(
+        tenants.ownerId,
+        ownerId
+      ),
+    ];
 
 
-  if (status) {
+  if (
+    status
+  ) {
     conditions.push(
       eq(
         rentBills.status,
@@ -337,6 +514,9 @@ export async function findRentBillsByOwner(
       tenantStatus:
         tenants.status,
 
+      rentCycleDay:
+        tenants.rentCycleDay,
+
       roomId:
         rooms.id,
 
@@ -346,7 +526,9 @@ export async function findRentBillsByOwner(
       floor:
         rooms.floor,
     })
-    .from(rentBills)
+    .from(
+      rentBills
+    )
     .innerJoin(
       tenants,
       eq(
@@ -371,6 +553,159 @@ export async function findRentBillsByOwner(
         rentBills.dueDate
       )
     );
+}
+
+
+/* ======================================================
+   FIND CURRENT RENT POSITION BY OWNER
+====================================================== */
+
+/*
+ * Main Rent & Payments listing.
+ *
+ * FINAL RULE:
+ *
+ * 1 tenant = 1 current rent-cycle record.
+ *
+ * Historical bills remain untouched.
+ *
+ * The current bill is the bill whose
+ * billing period contains today's India
+ * calendar date:
+ *
+ * billingPeriodStart <= today
+ * billingPeriodEnd   >= today
+ *
+ * Previous unpaid balances are calculated
+ * separately and are NOT merged into the
+ * current bill itself.
+ */
+export async function findCurrentRentPositionsByOwner(
+  dbClient,
+  ownerId
+) {
+  const today =
+    getTodayDateString();
+
+
+  return await dbClient.execute(
+    sql`
+      SELECT
+        t.id AS "tenantId",
+        t.full_name AS "tenantName",
+        t.mobile AS "tenantMobile",
+        t.status AS "tenantStatus",
+        t.rent_cycle_day AS "rentCycleDay",
+        t.monthly_rent AS "monthlyRent",
+
+        r.id AS "roomId",
+        r.room_number AS "roomNumber",
+        r.floor AS "floor",
+
+        current_bill.id AS "currentBillId",
+        current_bill.billing_period_start AS "billingPeriodStart",
+        current_bill.billing_period_end AS "billingPeriodEnd",
+        current_bill.due_date AS "dueDate",
+        current_bill.amount_due AS "currentAmountDue",
+        current_bill.amount_paid AS "currentAmountPaid",
+        current_bill.balance_amount AS "currentBalanceAmount",
+        current_bill.status AS "currentStatus",
+
+        COALESCE(
+          previous_balance."previousOutstanding",
+          0
+        ) AS "previousOutstanding",
+
+        (
+          COALESCE(
+            current_bill.balance_amount,
+            0
+          )
+          +
+          COALESCE(
+            previous_balance."previousOutstanding",
+            0
+          )
+        ) AS "totalOutstanding"
+
+      FROM tenants t
+
+      LEFT JOIN rooms r
+        ON r.id = t.room_id
+
+      LEFT JOIN LATERAL (
+        SELECT
+          rb.id,
+          rb.billing_period_start,
+          rb.billing_period_end,
+          rb.due_date,
+          rb.amount_due,
+          rb.amount_paid,
+          rb.balance_amount,
+          rb.status
+
+        FROM rent_bills rb
+
+        WHERE
+          rb.tenant_id = t.id
+
+          AND
+          rb.billing_period_start <= ${today}
+
+          AND
+          rb.billing_period_end >= ${today}
+
+        ORDER BY
+          rb.billing_period_start DESC,
+          rb.created_at DESC
+
+        LIMIT 1
+      ) current_bill
+        ON TRUE
+
+      LEFT JOIN LATERAL (
+        SELECT
+          COALESCE(
+            SUM(
+              rb.balance_amount
+            ),
+            0
+          ) AS "previousOutstanding"
+
+        FROM rent_bills rb
+
+        WHERE
+          rb.tenant_id = t.id
+
+          AND
+          rb.balance_amount > 0
+
+          AND (
+            current_bill.id IS NULL
+            OR rb.id <> current_bill.id
+          )
+
+          AND (
+            current_bill.billing_period_start IS NULL
+            OR rb.billing_period_start <
+              current_bill.billing_period_start
+          )
+      ) previous_balance
+        ON TRUE
+
+      WHERE
+        t.owner_id = ${ownerId}
+
+        AND t.status IN (
+          'ACTIVE',
+          'NOTICE_PERIOD'
+        )
+
+      ORDER BY
+        current_bill.due_date ASC NULLS LAST,
+        t.full_name ASC
+    `
+  );
 }
 
 
@@ -418,7 +753,9 @@ export async function findRentBillsByTenant(
       updatedAt:
         rentBills.updatedAt,
     })
-    .from(rentBills)
+    .from(
+      rentBills
+    )
     .innerJoin(
       tenants,
       eq(
@@ -501,6 +838,9 @@ export async function findRentBillDetailsById(
         tenantStatus:
           tenants.status,
 
+        rentCycleDay:
+          tenants.rentCycleDay,
+
         roomId:
           rooms.id,
 
@@ -510,7 +850,9 @@ export async function findRentBillDetailsById(
         floor:
           rooms.floor,
       })
-      .from(rentBills)
+      .from(
+        rentBills
+      )
       .innerJoin(
         tenants,
         eq(
@@ -540,7 +882,11 @@ export async function findRentBillDetailsById(
       )
       .limit(1);
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -552,22 +898,12 @@ export async function findRentCollectionSummary(
   dbClient,
   ownerId
 ) {
-  /*
-   * paymentDate is PostgreSQL DATE.
-   *
-   * Therefore month boundaries must
-   * also be YYYY-MM-DD strings.
-   */
   const {
     monthStart,
     nextMonthStart,
   } =
     getCurrentMonthRange();
 
-
-  /* ================================================
-     LIFETIME COLLECTED
-  ================================================ */
 
   const lifetimeResult =
     await dbClient
@@ -579,7 +915,9 @@ export async function findRentCollectionSummary(
           )
         `,
       })
-      .from(payments)
+      .from(
+        payments
+      )
       .innerJoin(
         tenants,
         eq(
@@ -595,10 +933,6 @@ export async function findRentCollectionSummary(
       );
 
 
-  /* ================================================
-     COLLECTED THIS MONTH
-  ================================================ */
-
   const monthResult =
     await dbClient
       .select({
@@ -609,7 +943,9 @@ export async function findRentCollectionSummary(
           )
         `,
       })
-      .from(payments)
+      .from(
+        payments
+      )
       .innerJoin(
         tenants,
         eq(

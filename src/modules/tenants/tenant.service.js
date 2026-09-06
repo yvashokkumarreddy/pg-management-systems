@@ -16,10 +16,14 @@ import {
   restoreTenant,
   findCurrentRentBill,
   updateRentBill,
+  findRentBillByTenantAndStart,
 } from "./tenant.repository.js";
 
 import {
   calculateRentCycle,
+  calculateTransitionRentCycle,
+  getRentCycleDayFromDate,
+  validateRentCycleDay,
 } from "./tenant.utils.js";
 
 
@@ -28,22 +32,52 @@ import {
 ====================================================== */
 
 function getTodayDateString() {
-  const now = new Date();
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Asia/Kolkata",
 
-  const year =
-    now.getFullYear();
+        year:
+          "numeric",
 
-  const month =
-    String(
-      now.getMonth() + 1
-    ).padStart(2, "0");
+        month:
+          "2-digit",
 
-  const day =
-    String(
-      now.getDate()
-    ).padStart(2, "0");
+        day:
+          "2-digit",
+      }
+    ).formatToParts(
+      new Date()
+    );
 
-  return `${year}-${month}-${day}`;
+
+  const values =
+    {};
+
+
+  for (
+    const part of
+    parts
+  ) {
+    if (
+      part.type !==
+      "literal"
+    ) {
+      values[
+        part.type
+      ] =
+        part.value;
+    }
+  }
+
+
+  return [
+    values.year,
+    values.month,
+    values.day,
+  ].join("-");
 }
 
 
@@ -51,13 +85,15 @@ function isValidDateString(
   value
 ) {
   if (
-    typeof value !== "string" ||
+    typeof value !==
+      "string" ||
     !/^\d{4}-\d{2}-\d{2}$/.test(
       value
     )
   ) {
     return false;
   }
+
 
   const [
     year,
@@ -66,6 +102,7 @@ function isValidDateString(
   ] = value
     .split("-")
     .map(Number);
+
 
   if (
     month < 1 ||
@@ -76,6 +113,7 @@ function isValidDateString(
     return false;
   }
 
+
   const daysInMonth =
     new Date(
       year,
@@ -83,9 +121,225 @@ function isValidDateString(
       0
     ).getDate();
 
-  return day <= daysInMonth;
+
+  return (
+    day <=
+    daysInMonth
+  );
 }
 
+/* ======================================================
+   NOTICE DATE HELPERS
+====================================================== */
+
+function getDaysInMonth(
+  year,
+  month
+) {
+  return new Date(
+    year,
+    month,
+    0
+  ).getDate();
+}
+
+
+function formatDateString(
+  year,
+  month,
+  day
+) {
+  return [
+    String(year).padStart(
+      4,
+      "0"
+    ),
+
+    String(month).padStart(
+      2,
+      "0"
+    ),
+
+    String(day).padStart(
+      2,
+      "0"
+    ),
+  ].join("-");
+}
+
+
+function getCycleBoundaryForMonth(
+  year,
+  month,
+  rentCycleDay
+) {
+  const lastDay =
+    getDaysInMonth(
+      year,
+      month
+    );
+
+
+  const day =
+    Math.min(
+      rentCycleDay,
+      lastDay
+    );
+
+
+  return formatDateString(
+    year,
+    month,
+    day
+  );
+}
+
+
+function getNextMonth(
+  year,
+  month
+) {
+  if (
+    month === 12
+  ) {
+    return {
+      year:
+        year + 1,
+
+      month:
+        1,
+    };
+  }
+
+
+  return {
+    year,
+
+    month:
+      month + 1,
+  };
+}
+
+
+function calculatePlannedVacatingDate(
+  noticeGivenDate,
+  rentCycleDay
+) {
+  const [
+    year,
+    month,
+  ] =
+    noticeGivenDate
+      .split("-")
+      .map(Number);
+
+
+  const currentMonthBoundary =
+    getCycleBoundaryForMonth(
+      year,
+      month,
+      rentCycleDay
+    );
+
+
+  /*
+   * If notice is given ON the cycle
+   * boundary, that cycle itself can serve
+   * as the full notice cycle.
+   *
+   * Example:
+   *
+   * cycle day = 3
+   * notice = 03 Oct
+   * vacating = 03 Nov
+   */
+  if (
+    noticeGivenDate ===
+    currentMonthBoundary
+  ) {
+    const next =
+      getNextMonth(
+        year,
+        month
+      );
+
+
+    return getCycleBoundaryForMonth(
+      next.year,
+      next.month,
+      rentCycleDay
+    );
+  }
+
+
+  /*
+   * If notice is given AFTER this month's
+   * boundary, the next cycle is the first
+   * complete notice cycle.
+   *
+   * Example:
+   *
+   * cycle day = 3
+   * notice = 06 Sep
+   *
+   * full notice cycle:
+   * 03 Oct -> 02 Nov
+   *
+   * vacating = 03 Nov
+   */
+  if (
+    noticeGivenDate >
+    currentMonthBoundary
+  ) {
+    const next =
+      getNextMonth(
+        year,
+        month
+      );
+
+
+    const afterNext =
+      getNextMonth(
+        next.year,
+        next.month
+      );
+
+
+    return getCycleBoundaryForMonth(
+      afterNext.year,
+      afterNext.month,
+      rentCycleDay
+    );
+  }
+
+
+  /*
+   * Notice was given BEFORE this month's
+   * cycle boundary.
+   *
+   * Example:
+   *
+   * cycle day = 15
+   * notice = 10 Sep
+   *
+   * full notice cycle:
+   * 15 Sep -> 14 Oct
+   *
+   * vacating = 15 Oct
+   */
+  const next =
+    getNextMonth(
+      year,
+      month
+    );
+
+
+  return getCycleBoundaryForMonth(
+    next.year,
+    next.month,
+    rentCycleDay
+  );
+}
 
 /* ======================================================
    CREATE TENANT
@@ -94,17 +348,22 @@ function isValidDateString(
 export async function createTenantService(
   data
 ) {
+  console.log("Creating tenant with data:", data);
   const room =
     await findRoomById(
       db,
       data.roomId
     );
 
-  if (!room) {
+
+  if (
+    !room
+  ) {
     throw new Error(
       "Room not found"
     );
   }
+
 
   if (
     room.ownerId !==
@@ -114,6 +373,7 @@ export async function createTenantService(
       "Room does not belong to this owner"
     );
   }
+
 
   if (
     room.status ===
@@ -125,19 +385,18 @@ export async function createTenantService(
   }
 
 
-  /*
-   * Check occupancy BEFORE inserting
-   * the new tenant.
-   */
   const occupiedBeds =
     await countOccupiedBedsByRoom(
       db,
       data.roomId
     );
 
+
   if (
     occupiedBeds >=
-    Number(room.capacity)
+    Number(
+      room.capacity
+    )
   ) {
     throw new Error(
       "Room has no available bed"
@@ -145,12 +404,6 @@ export async function createTenantService(
   }
 
 
-  /*
-   * dateOfJoining is a PostgreSQL DATE.
-   *
-   * It must remain YYYY-MM-DD.
-   * Do not convert it to new Date().
-   */
   if (
     !isValidDateString(
       data.dateOfJoining
@@ -162,9 +415,25 @@ export async function createTenantService(
   }
 
 
+  /*
+   * Every new tenant initially starts
+   * with joining day as rent-cycle day.
+   *
+   * Example:
+   *
+   * Joined 15 Sep
+   * rentCycleDay = 15
+   */
+  const rentCycleDay =
+    getRentCycleDayFromDate(
+      data.dateOfJoining
+    );
+
+
   const rentCycle =
     calculateRentCycle(
-      data.dateOfJoining
+      data.dateOfJoining,
+      rentCycleDay
     );
 
 
@@ -173,7 +442,9 @@ export async function createTenantService(
 
 
   return await db.transaction(
-    async (tx) => {
+    async (
+      tx
+    ) => {
       const tenant =
         await createTenant(
           tx,
@@ -193,12 +464,10 @@ export async function createTenantService(
             mobile:
               data.mobile,
 
-            /*
-             * PostgreSQL DATE
-             * YYYY-MM-DD
-             */
             dateOfJoining:
               data.dateOfJoining,
+
+            rentCycleDay,
 
             monthlyRent:
               String(
@@ -222,13 +491,16 @@ export async function createTenantService(
               tenant.id,
 
             billingPeriodStart:
-              rentCycle.billingPeriodStart,
+              rentCycle
+                .billingPeriodStart,
 
             billingPeriodEnd:
-              rentCycle.billingPeriodEnd,
+              rentCycle
+                .billingPeriodEnd,
 
             dueDate:
-              rentCycle.dueDate,
+              rentCycle
+                .dueDate,
 
             amountDue:
               String(
@@ -297,11 +569,14 @@ export async function createTenantService(
 export async function getTenantsService(
   ownerId
 ) {
-  if (!ownerId) {
+  if (
+    !ownerId
+  ) {
     throw new Error(
       "Owner ID is required"
     );
   }
+
 
   return await findTenantsByOwner(
     db,
@@ -318,17 +593,23 @@ export async function getTenantByIdService(
   tenantId,
   ownerId
 ) {
-  if (!tenantId) {
+  if (
+    !tenantId
+  ) {
     throw new Error(
       "Tenant ID is required"
     );
   }
 
-  if (!ownerId) {
+
+  if (
+    !ownerId
+  ) {
     throw new Error(
       "Owner ID is required"
     );
   }
+
 
   const tenant =
     await findTenantDetailsById(
@@ -337,9 +618,13 @@ export async function getTenantByIdService(
       ownerId
     );
 
-  if (!tenant) {
+
+  if (
+    !tenant
+  ) {
     return null;
   }
+
 
   return tenant;
 }
@@ -361,20 +646,16 @@ export async function updateTenantService(
       ownerId
     );
 
-  if (!existingTenant) {
+
+  if (
+    !existingTenant
+  ) {
     throw new Error(
       "Tenant not found"
     );
   }
 
 
-  /*
-   * Archived tenant profile cannot
-   * be edited through normal update.
-   *
-   * Restoration is handled by
-   * restoreTenantService().
-   */
   if (
     existingTenant.status ===
     "ARCHIVED"
@@ -384,10 +665,6 @@ export async function updateTenantService(
     );
   }
 
-
-  /* ====================================================
-     CHECK WHETHER MONTHLY RENT ACTUALLY CHANGED
-  ==================================================== */
 
   const monthlyRentChanged =
     data.monthlyRent !==
@@ -415,11 +692,15 @@ export async function updateTenantService(
         data.roomId
       );
 
-    if (!room) {
+
+    if (
+      !room
+    ) {
       throw new Error(
         "Room not found"
       );
     }
+
 
     if (
       room.ownerId !==
@@ -429,6 +710,7 @@ export async function updateTenantService(
         "Room does not belong to this owner"
       );
     }
+
 
     if (
       room.status ===
@@ -449,7 +731,9 @@ export async function updateTenantService(
 
     if (
       occupiedBeds >=
-      Number(room.capacity)
+      Number(
+        room.capacity
+      )
     ) {
       throw new Error(
         "Room has no available bed"
@@ -467,7 +751,8 @@ export async function updateTenantService(
       undefined &&
     data.dateOfBirth !==
       null &&
-    data.dateOfBirth !== "" &&
+    data.dateOfBirth !==
+      "" &&
     !isValidDateString(
       data.dateOfBirth
     )
@@ -492,11 +777,9 @@ export async function updateTenantService(
 
 
   return await db.transaction(
-    async (tx) => {
-      /* ==================================================
-         TENANT UPDATE
-      ================================================== */
-
+    async (
+      tx
+    ) => {
       const tenantUpdate =
         {};
 
@@ -528,10 +811,6 @@ export async function updateTenantService(
       }
 
 
-      /*
-       * PostgreSQL DATE
-       * Keep as YYYY-MM-DD.
-       */
       if (
         data.dateOfBirth !==
         undefined
@@ -543,8 +822,11 @@ export async function updateTenantService(
 
 
       /*
-       * PostgreSQL DATE
-       * Keep as YYYY-MM-DD.
+       * dateOfJoining remains a genuine
+       * historical-data correction field.
+       *
+       * It does NOT automatically alter
+       * rentCycleDay.
        */
       if (
         data.dateOfJoining !==
@@ -569,7 +851,8 @@ export async function updateTenantService(
       const tenant =
         Object.keys(
           tenantUpdate
-        ).length > 0
+        ).length >
+        0
           ? await updateTenant(
               tx,
               tenantId,
@@ -580,18 +863,7 @@ export async function updateTenantService(
 
 
       /* ==================================================
-         UPDATE CURRENT RENT BILL WHEN RENT CHANGES
-
-         RULE:
-
-         amountPaid = 0
-           → current bill uses new rent
-
-         amountPaid > 0
-           → current bill stays unchanged
-
-         Future bills automatically use
-         tenant.monthlyRent.
+         EXISTING MONTHLY RENT CHANGE RULE
       ================================================== */
 
       let rentBill =
@@ -683,7 +955,8 @@ export async function updateTenantService(
       if (
         Object.keys(
           depositUpdate
-        ).length > 0
+        ).length >
+        0
       ) {
         deposit =
           await updateTenantDeposit(
@@ -705,21 +978,418 @@ export async function updateTenantService(
 
 
 /* ======================================================
-   ARCHIVE TENANT
+   CHANGE RENT CYCLE
 ====================================================== */
 
-export async function archiveTenantService(
+export async function changeTenantRentCycleService(
   tenantId,
   ownerId,
-  leavingDate
+  data
 ) {
-  if (!tenantId) {
+  if (
+    !tenantId
+  ) {
     throw new Error(
       "Tenant ID is required"
     );
   }
 
-  if (!ownerId) {
+
+  if (
+    !ownerId
+  ) {
+    throw new Error(
+      "Owner ID is required"
+    );
+  }
+
+
+  const newRentCycleDay =
+    validateRentCycleDay(
+      data.rentCycleDay
+    );
+
+
+  const transitionRentAmount =
+    Number(
+      data.transitionRentAmount
+    );
+
+
+  if (
+    !Number.isFinite(
+      transitionRentAmount
+    ) ||
+    transitionRentAmount <=
+      0
+  ) {
+    throw new Error(
+      "Transition rent amount must be greater than 0"
+    );
+  }
+
+
+  const existingTenant =
+    await findTenantDetailsById(
+      db,
+      tenantId,
+      ownerId
+    );
+
+
+  if (
+    !existingTenant
+  ) {
+    throw new Error(
+      "Tenant not found"
+    );
+  }
+
+
+  if (
+    existingTenant.status ===
+    "ARCHIVED"
+  ) {
+    throw new Error(
+      "Rent cycle cannot be changed for an archived tenant"
+    );
+  }
+
+
+  const currentRentCycleDay =
+    Number(
+      existingTenant.rentCycleDay
+    );
+
+
+  if (
+    currentRentCycleDay ===
+    newRentCycleDay
+  ) {
+    throw new Error(
+      "New rent cycle day is the same as the current rent cycle day"
+    );
+  }
+
+
+  /*
+   * Bills are returned newest first by
+   * findTenantDetailsById().
+   */
+  const latestBill =
+    Array.isArray(
+      existingTenant.rentBills
+    )
+      ? existingTenant
+          .rentBills[0]
+      : null;
+
+
+  /*
+   * Normally at least the first bill
+   * exists.
+   *
+   * If old/repaired data has no bills,
+   * transition begins from the historical
+   * joining date.
+   */
+  const transitionStartDate =
+    latestBill?.dueDate ||
+    existingTenant
+      .dateOfJoining;
+
+
+  if (
+    !isValidDateString(
+      transitionStartDate
+    )
+  ) {
+    throw new Error(
+      "Unable to determine transition start date"
+    );
+  }
+
+
+  const transitionCycle =
+    calculateTransitionRentCycle(
+      transitionStartDate,
+      newRentCycleDay
+    );
+
+
+  return await db.transaction(
+    async (
+      tx
+    ) => {
+      /*
+       * Protect against duplicate billing
+       * if the request is accidentally
+       * submitted more than once.
+       */
+      const existingTransitionBill =
+        await findRentBillByTenantAndStart(
+          tx,
+          tenantId,
+          transitionCycle
+            .billingPeriodStart
+        );
+
+
+      if (
+        existingTransitionBill
+      ) {
+        throw new Error(
+          "A rent bill already exists for the transition period"
+        );
+      }
+
+
+      /*
+       * Historical dateOfJoining is NOT
+       * touched.
+       */
+      const tenant =
+        await updateTenant(
+          tx,
+          tenantId,
+          ownerId,
+          {
+            rentCycleDay:
+              newRentCycleDay,
+          }
+        );
+
+
+      /*
+       * Owner manually decides the
+       * transition amount.
+       *
+       * Example:
+       *
+       * Old cycle: 15th
+       * New cycle: 3rd
+       *
+       * 15 Oct -> 02 Nov
+       * Amount is entered by owner.
+       */
+      const transitionBill =
+        await createRentBill(
+          tx,
+          {
+            id:
+              crypto.randomUUID(),
+
+            tenantId,
+
+            billingPeriodStart:
+              transitionCycle
+                .billingPeriodStart,
+
+            billingPeriodEnd:
+              transitionCycle
+                .billingPeriodEnd,
+
+            dueDate:
+              transitionCycle
+                .dueDate,
+
+            amountDue:
+              String(
+                transitionRentAmount
+              ),
+
+            amountPaid:
+              "0",
+
+            balanceAmount:
+              String(
+                transitionRentAmount
+              ),
+
+            status:
+              "PENDING",
+          }
+        );
+
+
+      return {
+        tenant,
+
+        transitionBill,
+
+        previousRentCycleDay:
+          currentRentCycleDay,
+
+        newRentCycleDay,
+
+        nextRegularCycleStart:
+          transitionCycle
+            .nextRegularCycleStart,
+      };
+    }
+  );
+}
+
+/* ======================================================
+   GIVE VACATING NOTICE
+====================================================== */
+
+export async function giveTenantNoticeService(
+  tenantId,
+  ownerId,
+  data
+) {
+  if (
+    !tenantId
+  ) {
+    throw new Error(
+      "Tenant ID is required"
+    );
+  }
+
+
+  if (
+    !ownerId
+  ) {
+    throw new Error(
+      "Owner ID is required"
+    );
+  }
+
+
+  if (
+    !isValidDateString(
+      data.noticeGivenDate
+    )
+  ) {
+    throw new Error(
+      "Invalid notice given date"
+    );
+  }
+
+
+  const existingTenant =
+    await findTenantDetailsById(
+      db,
+      tenantId,
+      ownerId
+    );
+
+
+  if (
+    !existingTenant
+  ) {
+    throw new Error(
+      "Tenant not found"
+    );
+  }
+
+
+  if (
+    existingTenant.status ===
+    "ARCHIVED"
+  ) {
+    throw new Error(
+      "Notice cannot be recorded for an archived tenant"
+    );
+  }
+
+
+  if (
+    existingTenant.status ===
+    "NOTICE_PERIOD"
+  ) {
+    throw new Error(
+      "Tenant is already in notice period"
+    );
+  }
+
+
+  if (
+    data.noticeGivenDate <
+    existingTenant.dateOfJoining
+  ) {
+    throw new Error(
+      "Notice date cannot be before joining date"
+    );
+  }
+
+
+  const rentCycleDay =
+    validateRentCycleDay(
+      existingTenant.rentCycleDay
+    );
+
+
+  /*
+   * IMPORTANT:
+   *
+   * The client does NOT decide the
+   * planned vacating date.
+   *
+   * We calculate the first valid vacating
+   * boundary that provides one complete
+   * rent cycle of notice.
+   */
+  const plannedVacatingDate =
+    calculatePlannedVacatingDate(
+      data.noticeGivenDate,
+      rentCycleDay
+    );
+
+
+  const tenant =
+    await updateTenant(
+      db,
+      tenantId,
+      ownerId,
+      {
+        status:
+          "NOTICE_PERIOD",
+
+        noticeGivenDate:
+          data.noticeGivenDate,
+
+        plannedVacatingDate,
+      }
+    );
+
+
+  return {
+    tenant,
+
+    notice: {
+      noticeGivenDate:
+        data.noticeGivenDate,
+
+      plannedVacatingDate,
+
+      rentCycleDay,
+    },
+  };
+}
+
+
+/* ======================================================
+   CANCEL VACATING NOTICE
+====================================================== */
+
+export async function cancelTenantNoticeService(
+  tenantId,
+  ownerId
+) {
+  if (
+    !tenantId
+  ) {
+    throw new Error(
+      "Tenant ID is required"
+    );
+  }
+
+
+  if (
+    !ownerId
+  ) {
     throw new Error(
       "Owner ID is required"
     );
@@ -734,7 +1404,89 @@ export async function archiveTenantService(
     );
 
 
-  if (!existingTenant) {
+  if (
+    !existingTenant
+  ) {
+    throw new Error(
+      "Tenant not found"
+    );
+  }
+
+
+  if (
+    existingTenant.status ===
+    "ARCHIVED"
+  ) {
+    throw new Error(
+      "Notice cannot be cancelled for an archived tenant"
+    );
+  }
+
+
+  if (
+    existingTenant.status !==
+    "NOTICE_PERIOD"
+  ) {
+    throw new Error(
+      "Tenant is not in notice period"
+    );
+  }
+
+
+  return await updateTenant(
+    db,
+    tenantId,
+    ownerId,
+    {
+      status:
+        "ACTIVE",
+
+      noticeGivenDate:
+        null,
+
+      plannedVacatingDate:
+        null,
+    }
+  );
+}
+/* ======================================================
+   ARCHIVE TENANT
+====================================================== */
+
+export async function archiveTenantService(
+  tenantId,
+  ownerId,
+  leavingDate
+) {
+  if (
+    !tenantId
+  ) {
+    throw new Error(
+      "Tenant ID is required"
+    );
+  }
+
+
+  if (
+    !ownerId
+  ) {
+    throw new Error(
+      "Owner ID is required"
+    );
+  }
+
+
+  const existingTenant =
+    await findTenantDetailsById(
+      db,
+      tenantId,
+      ownerId
+    );
+
+
+  if (
+    !existingTenant
+  ) {
     throw new Error(
       "Tenant not found"
     );
@@ -751,11 +1503,6 @@ export async function archiveTenantService(
   }
 
 
-  /*
-   * dateOfLeaving is a PostgreSQL DATE.
-   *
-   * Do not convert it through new Date().
-   */
   const parsedLeavingDate =
     leavingDate ||
     getTodayDateString();
@@ -772,10 +1519,6 @@ export async function archiveTenantService(
   }
 
 
-  /*
-   * Both values are YYYY-MM-DD.
-   * Direct string comparison is safe.
-   */
   if (
     parsedLeavingDate <
     existingTenant.dateOfJoining
@@ -803,13 +1546,18 @@ export async function restoreTenantService(
   tenantId,
   ownerId
 ) {
-  if (!tenantId) {
+  if (
+    !tenantId
+  ) {
     throw new Error(
       "Tenant ID is required"
     );
   }
 
-  if (!ownerId) {
+
+  if (
+    !ownerId
+  ) {
     throw new Error(
       "Owner ID is required"
     );
@@ -824,7 +1572,9 @@ export async function restoreTenantService(
     );
 
 
-  if (!existingTenant) {
+  if (
+    !existingTenant
+  ) {
     throw new Error(
       "Tenant not found"
     );
@@ -850,10 +1600,6 @@ export async function restoreTenantService(
   }
 
 
-  /* ====================================================
-     CHECK ORIGINAL ASSIGNED ROOM
-  ==================================================== */
-
   const room =
     await findRoomById(
       db,
@@ -861,7 +1607,9 @@ export async function restoreTenantService(
     );
 
 
-  if (!room) {
+  if (
+    !room
+  ) {
     throw new Error(
       "Assigned room not found"
     );
@@ -888,10 +1636,6 @@ export async function restoreTenantService(
   }
 
 
-  /* ====================================================
-     CHECK BED AVAILABILITY
-  ==================================================== */
-
   const occupiedBeds =
     await countOccupiedBedsByRoom(
       db,
@@ -901,17 +1645,15 @@ export async function restoreTenantService(
 
   if (
     occupiedBeds >=
-    Number(room.capacity)
+    Number(
+      room.capacity
+    )
   ) {
     throw new Error(
       "Assigned room has no available bed"
     );
   }
 
-
-  /* ====================================================
-     ACTIVATE
-  ==================================================== */
 
   return await restoreTenant(
     db,

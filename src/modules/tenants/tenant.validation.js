@@ -1,130 +1,367 @@
-export function validateCreateTenant(data) {
-  const errors = {};
+function isValidDateString(
+  value
+) {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      value
+    )
+  ) {
+    return false;
+  }
+
+
+  const [
+    year,
+    month,
+    day,
+  ] = value
+    .split("-")
+    .map(Number);
+
+
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1
+  ) {
+    return false;
+  }
+
+
+  const daysInMonth =
+    new Date(
+      year,
+      month,
+      0
+    ).getDate();
+
+
+  return (
+    day <=
+    daysInMonth
+  );
+}
+
+
+/* ======================================================
+   CREATE TENANT
+====================================================== */
+
+export function validateCreateTenant(
+  data
+) {
+  const errors =
+    {};
+
 
   if (
     !data.fullName ||
-    !String(data.fullName).trim()
+    typeof data.fullName !==
+      "string"
   ) {
     errors.fullName =
       "Full name is required";
   }
 
+
   if (
     !data.mobile ||
-    !String(data.mobile).trim()
+    typeof data.mobile !==
+      "string"
   ) {
     errors.mobile =
       "Mobile number is required";
   }
 
-  if (!data.roomId) {
-    errors.roomId =
-      "Room is required";
-  }
 
-  if (!data.dateOfJoining) {
+  if (
+    !data.dateOfJoining
+  ) {
     errors.dateOfJoining =
       "Date of joining is required";
+  } else if (
+    !isValidDateString(
+      data.dateOfJoining
+    )
+  ) {
+    errors.dateOfJoining =
+      "Invalid date of joining";
   }
 
+
   if (
-    data.monthlyRent === undefined ||
-    data.monthlyRent === null ||
-    data.monthlyRent === "" ||
-    Number(data.monthlyRent) <= 0
+    data.monthlyRent ===
+      undefined ||
+    data.monthlyRent ===
+      null ||
+    Number.isNaN(
+      Number(
+        data.monthlyRent
+      )
+    ) ||
+    Number(
+      data.monthlyRent
+    ) <= 0
   ) {
     errors.monthlyRent =
-      "Monthly rent must be greater than 0";
+      "Valid monthly rent is required";
   }
 
+
   if (
-    data.advanceAmount !== undefined &&
-    data.advanceAmount !== null &&
-    data.advanceAmount !== "" &&
-    Number(data.advanceAmount) < 0
+    !data.roomId ||
+    typeof data.roomId !==
+      "string"
   ) {
-    errors.advanceAmount =
-      "Deposit received cannot be negative";
+    errors.roomId =
+      "Room ID is required";
   }
+
 
   return {
     isValid:
-      Object.keys(errors).length === 0,
+      Object.keys(
+        errors
+      ).length ===
+      0,
+
     errors,
   };
 }
 
 
-export function validateUpdateTenant(data) {
-  const errors = {};
+/* ======================================================
+   UPDATE TENANT
+====================================================== */
+
+export function validateUpdateTenant(
+  data
+) {
+  const errors =
+    {};
+
 
   if (
-    data.fullName !== undefined &&
-    !String(data.fullName).trim()
+    data.fullName !==
+      undefined &&
+    (
+      typeof data.fullName !==
+        "string" ||
+      !data.fullName.trim()
+    )
   ) {
     errors.fullName =
-      "Full name cannot be empty";
+      "Full name must be valid";
   }
 
+
   if (
-    data.mobile !== undefined &&
-    !String(data.mobile).trim()
+    data.mobile !==
+      undefined &&
+    (
+      typeof data.mobile !==
+        "string" ||
+      !data.mobile.trim()
+    )
   ) {
     errors.mobile =
-      "Mobile number cannot be empty";
+      "Mobile number must be valid";
   }
 
-  if (
-    data.roomId !== undefined &&
-    !data.roomId
-  ) {
-    errors.roomId =
-      "Room is required";
-  }
 
   if (
-    data.dateOfJoining !== undefined &&
-    !data.dateOfJoining
+    data.dateOfJoining !==
+      undefined &&
+    !isValidDateString(
+      data.dateOfJoining
+    )
   ) {
     errors.dateOfJoining =
-      "Date of joining is required";
+      "Invalid date of joining";
   }
 
+
   if (
-    data.monthlyRent !== undefined &&
-    Number(data.monthlyRent) <= 0
+    data.dateOfBirth !==
+      undefined &&
+    data.dateOfBirth !==
+      null &&
+    data.dateOfBirth !==
+      "" &&
+    !isValidDateString(
+      data.dateOfBirth
+    )
+  ) {
+    errors.dateOfBirth =
+      "Invalid date of birth";
+  }
+
+
+  if (
+    data.monthlyRent !==
+      undefined &&
+    (
+      Number.isNaN(
+        Number(
+          data.monthlyRent
+        )
+      ) ||
+      Number(
+        data.monthlyRent
+      ) <= 0
+    )
   ) {
     errors.monthlyRent =
       "Monthly rent must be greater than 0";
   }
 
-  if (
-    data.advanceAmount !== undefined &&
-    Number(data.advanceAmount) < 0
+
+  for (
+    const field of
+    [
+      "advanceAmount",
+      "maintenanceAmount",
+      "refundableAmount",
+    ]
   ) {
-    errors.advanceAmount =
-      "Advance amount cannot be negative";
+    if (
+      data[field] !==
+        undefined &&
+      (
+        Number.isNaN(
+          Number(
+            data[field]
+          )
+        ) ||
+        Number(
+          data[field]
+        ) < 0
+      )
+    ) {
+      errors[field] =
+        `${field} must be 0 or greater`;
+    }
   }
 
-  if (
-    data.maintenanceAmount !== undefined &&
-    Number(data.maintenanceAmount) < 0
-  ) {
-    errors.maintenanceAmount =
-      "Maintenance amount cannot be negative";
-  }
-
-  if (
-    data.refundableAmount !== undefined &&
-    Number(data.refundableAmount) < 0
-  ) {
-    errors.refundableAmount =
-      "Refundable amount cannot be negative";
-  }
 
   return {
     isValid:
-      Object.keys(errors).length === 0,
+      Object.keys(
+        errors
+      ).length ===
+      0,
+
+    errors,
+  };
+}
+
+
+/* ======================================================
+   CHANGE RENT CYCLE
+====================================================== */
+
+export function validateRentCycleChange(
+  data
+) {
+  const errors =
+    {};
+
+
+  const rentCycleDay =
+    Number(
+      data.rentCycleDay
+    );
+
+
+  if (
+    !Number.isInteger(
+      rentCycleDay
+    ) ||
+    rentCycleDay < 1 ||
+    rentCycleDay > 31
+  ) {
+    errors.rentCycleDay =
+      "Rent cycle day must be between 1 and 31";
+  }
+
+
+  const transitionRentAmount =
+    Number(
+      data.transitionRentAmount
+    );
+
+
+  if (
+    !Number.isFinite(
+      transitionRentAmount
+    ) ||
+    transitionRentAmount <=
+      0
+  ) {
+    errors.transitionRentAmount =
+      "Transition rent amount must be greater than 0";
+  }
+
+
+  return {
+    isValid:
+      Object.keys(
+        errors
+      ).length ===
+      0,
+
+    errors,
+  };
+}
+
+
+/* ======================================================
+   GIVE VACATING NOTICE
+====================================================== */
+
+
+export function validateGiveNotice(
+  data
+) {
+  const errors =
+    {};
+
+
+  /*
+   * plannedVacatingDate is intentionally
+   * NOT accepted from the client.
+   *
+   * The backend calculates it from:
+   *
+   * - noticeGivenDate
+   * - tenant.rentCycleDay
+   *
+   * This prevents the frontend from
+   * choosing an invalid notice boundary.
+   */
+  if (
+    !data.noticeGivenDate
+  ) {
+    errors.noticeGivenDate =
+      "Notice given date is required";
+  } else if (
+    !isValidDateString(
+      data.noticeGivenDate
+    )
+  ) {
+    errors.noticeGivenDate =
+      "Invalid notice given date";
+  }
+
+
+  return {
+    isValid:
+      Object.keys(
+        errors
+      ).length ===
+      0,
+
     errors,
   };
 }

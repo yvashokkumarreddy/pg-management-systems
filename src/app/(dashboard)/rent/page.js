@@ -12,7 +12,9 @@ import {
   X,
 } from "lucide-react";
 
-import { apiRequest } from "@/lib/api/client";
+import {
+  apiRequest,
+} from "@/lib/api/client";
 
 
 /* ======================================================
@@ -20,11 +22,16 @@ import { apiRequest } from "@/lib/api/client";
 ====================================================== */
 
 function formatCurrency(value) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0));
+  return new Intl.NumberFormat(
+    "en-IN",
+    {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 0,
+    }
+  ).format(
+    Number(value || 0)
+  );
 }
 
 
@@ -65,19 +72,37 @@ function formatCompactCurrency(value) {
 }
 
 
-function formatCycleDate(value) {
-  if (!value) {
-    return "—";
+function parseDateOnly(value) {
+  if (
+    !value ||
+    typeof value !==
+      "string"
+  ) {
+    return null;
   }
 
-  const date =
-    new Date(value);
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+      value
+    );
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (!match) {
+    return null;
+  }
+
+  return new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3])
+  );
+}
+
+
+function formatCycleDate(value) {
+  const date =
+    parseDateOnly(value);
+
+  if (!date) {
     return "—";
   }
 
@@ -92,18 +117,10 @@ function formatCycleDate(value) {
 
 
 function formatFullDate(value) {
-  if (!value) {
-    return "—";
-  }
-
   const date =
-    new Date(value);
+    parseDateOnly(value);
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  if (!date) {
     return "—";
   }
 
@@ -139,70 +156,84 @@ function formatPaymentMode(mode) {
 
 
 function getTodayInputDate() {
-  const now =
-    new Date();
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Asia/Kolkata",
+        year:
+          "numeric",
+        month:
+          "2-digit",
+        day:
+          "2-digit",
+      }
+    ).formatToParts(
+      new Date()
+    );
 
-  const offset =
-    now.getTimezoneOffset() *
-    60000;
+  const values = {};
 
-  return new Date(
-    now.getTime() - offset
-  )
-    .toISOString()
-    .slice(0, 10);
+  for (const part of parts) {
+    if (
+      part.type !==
+      "literal"
+    ) {
+      values[part.type] =
+        part.value;
+    }
+  }
+
+  return [
+    values.year,
+    values.month,
+    values.day,
+  ].join("-");
+}
+
+
+function roundMoney(value) {
+  return (
+    Math.round(
+      Number(value) * 100
+    ) / 100
+  );
 }
 
 
 function isBillOverdue(bill) {
   const balance =
     Number(
-      bill.balanceAmount || 0
+      bill.balanceAmount ||
+        0
     );
 
-  if (balance <= 0) {
+  if (
+    balance <= 0 ||
+    !bill.dueDate
+  ) {
     return false;
   }
 
-  if (!bill.dueDate) {
-    return false;
-  }
-
-  const dueDate =
-    new Date(
-      bill.dueDate
-    );
-
-  const today =
-    new Date();
-
-  dueDate.setHours(
-    0,
-    0,
-    0,
-    0
+  return (
+    bill.dueDate <
+    getTodayInputDate()
   );
-
-  today.setHours(
-    0,
-    0,
-    0,
-    0
-  );
-
-  return dueDate < today;
 }
 
 
 function getBillStatus(bill) {
   const amountPaid =
     Number(
-      bill.amountPaid || 0
+      bill.amountPaid ||
+        0
     );
 
   const balance =
     Number(
-      bill.balanceAmount || 0
+      bill.balanceAmount ||
+        0
     );
 
   if (
@@ -213,7 +244,8 @@ function getBillStatus(bill) {
   }
 
   if (
-    bill.status === "OVERDUE" ||
+    bill.status ===
+      "OVERDUE" ||
     isBillOverdue(bill)
   ) {
     return "OVERDUE";
@@ -225,6 +257,33 @@ function getBillStatus(bill) {
     bill.status ===
       "PARTIAL" ||
     amountPaid > 0
+  ) {
+    return "PARTIAL";
+  }
+
+  return "PENDING";
+}
+
+
+function getGroupedStatus(bills) {
+  if (
+    bills.some(
+      (bill) =>
+        getBillStatus(
+          bill
+        ) === "OVERDUE"
+    )
+  ) {
+    return "OVERDUE";
+  }
+
+  if (
+    bills.some(
+      (bill) =>
+        getBillStatus(
+          bill
+        ) === "PARTIAL"
+    )
   ) {
     return "PARTIAL";
   }
@@ -262,10 +321,34 @@ export default function RentPage() {
      DATA
   ==================================================== */
 
+  /*
+   * Historical bills.
+   *
+   * Used for:
+   * - payment allocation
+   * - previous outstanding
+   * - summary
+   * - payment history
+   */
   const [
     rentBills,
     setRentBills,
   ] = useState([]);
+
+
+  /*
+   * Current rent positions.
+   *
+   * Backend:
+   * /api/rent-bills/current
+   *
+   * 1 tenant = 1 current-cycle row.
+   */
+  const [
+    currentRentPositions,
+    setCurrentRentPositions,
+  ] = useState([]);
+
 
   const [
     collectionSummary,
@@ -275,10 +358,12 @@ export default function RentPage() {
     lifetimeCollected: 0,
   });
 
+
   const [
     loading,
     setLoading,
   ] = useState(true);
+
 
   const [
     error,
@@ -295,6 +380,7 @@ export default function RentPage() {
     setStatusFilter,
   ] = useState("ALL");
 
+
   const [
     currentPage,
     setCurrentPage,
@@ -310,20 +396,30 @@ export default function RentPage() {
     setPaymentModalOpen,
   ] = useState(false);
 
+
   const [
-    selectedBillId,
-    setSelectedBillId,
+    selectedPaymentTargetId,
+    setSelectedPaymentTargetId,
   ] = useState("");
+
 
   const [
     paymentAmount,
     setPaymentAmount,
   ] = useState("");
 
+
+  const [
+    paymentAllocations,
+    setPaymentAllocations,
+  ] = useState({});
+
+
   const [
     paymentMode,
     setPaymentMode,
   ] = useState("UPI");
+
 
   const [
     paymentDate,
@@ -332,15 +428,35 @@ export default function RentPage() {
     getTodayInputDate()
   );
 
+
   const [
     paymentReference,
     setPaymentReference,
   ] = useState("");
 
+
+  /*
+   * When true:
+   *
+   * POST /api/payments
+   * receives:
+   *
+   * markNoticePeriod: true
+   *
+   * Backend uses paymentDate as
+   * noticeGivenDate.
+   */
+  const [
+    markNoticePeriod,
+    setMarkNoticePeriod,
+  ] = useState(false);
+
+
   const [
     paymentSubmitting,
     setPaymentSubmitting,
   ] = useState(false);
+
 
   const [
     paymentError,
@@ -349,7 +465,7 @@ export default function RentPage() {
 
 
   /* ====================================================
-     BILL DETAILS MODAL
+     BILL DETAILS
   ==================================================== */
 
   const [
@@ -357,25 +473,30 @@ export default function RentPage() {
     setBillDetailsModalOpen,
   ] = useState(false);
 
+
   const [
     selectedViewBill,
     setSelectedViewBill,
   ] = useState(null);
+
 
   const [
     billPayments,
     setBillPayments,
   ] = useState([]);
 
+
   const [
     billDetailsLoading,
     setBillDetailsLoading,
   ] = useState(false);
 
+
   const [
     billDetailsError,
     setBillDetailsError,
   ] = useState("");
+
 
   const [
     billPaymentsCache,
@@ -384,194 +505,412 @@ export default function RentPage() {
 
 
   /* ====================================================
-     LOAD BILLS + COLLECTION SUMMARY
+     LOAD RENT DATA
   ==================================================== */
 
   const loadRentBills =
-    useCallback(async () => {
-      try {
-        setLoading(true);
-        setError("");
+    useCallback(
+      async () => {
+        try {
+          setLoading(true);
+          setError("");
 
-        const response =
-          await apiRequest(
-            "/api/rent-bills"
+          const [
+            billsResponse,
+            currentResponse,
+          ] =
+            await Promise.all([
+              apiRequest(
+                "/api/rent-bills"
+              ),
+
+              apiRequest(
+                "/api/rent-bills/current"
+              ),
+            ]);
+
+
+          /* ============================================
+             HISTORICAL RENT BILLS
+
+             Actual response:
+
+             {
+               success: true,
+               data: {
+                 bills: [...],
+                 summary: {...}
+               }
+             }
+          ============================================ */
+
+          const billsPayload =
+            billsResponse?.data ??
+            billsResponse;
+
+
+          const bills =
+            Array.isArray(
+              billsPayload?.bills
+            )
+              ? billsPayload.bills
+              : [];
+
+
+          setRentBills(
+            bills
           );
 
-        const payload =
-          response?.data ??
-          response;
 
-        /*
-         * New API response:
-         *
-         * {
-         *   bills: [...],
-         *   summary: {
-         *     collectedThisMonth,
-         *     lifetimeCollected
-         *   }
-         * }
-         */
+          setCollectionSummary({
+            collectedThisMonth:
+              Number(
+                billsPayload
+                  ?.summary
+                  ?.collectedThisMonth ??
+                  0
+              ),
 
-        const bills =
-          Array.isArray(
-            payload?.bills
-          )
-            ? payload.bills
-            : Array.isArray(
-                payload
-              )
-            ? payload
-            : [];
-
-        const backendSummary =
-          payload?.summary ??
-          {};
-
-        setRentBills(
-          bills
-        );
-
-        setCollectionSummary({
-          collectedThisMonth:
-            Number(
-              backendSummary
-                ?.collectedThisMonth ??
-                0
-            ),
-
-          lifetimeCollected:
-            Number(
-              backendSummary
-                ?.lifetimeCollected ??
-                0
-            ),
-        });
-      } catch (err) {
-        console.error(
-          "Load rent bills error:",
-          err
-        );
-
-        setError(
-          err?.data?.message ||
-            err?.message ||
-            "Unable to load rent bills."
-        );
-
-        setRentBills([]);
-
-        setCollectionSummary({
-          collectedThisMonth: 0,
-          lifetimeCollected: 0,
-        });
-      } finally {
-        setLoading(false);
-      }
-    }, []);
+            lifetimeCollected:
+              Number(
+                billsPayload
+                  ?.summary
+                  ?.lifetimeCollected ??
+                  0
+              ),
+          });
 
 
-  useEffect(() => {
-    loadRentBills();
-  }, [
-    loadRentBills,
-  ]);
+          /* ============================================
+             CURRENT RENT POSITIONS
+
+             Actual response:
+
+             {
+               success: true,
+               data: {
+                 positions: [...]
+               }
+             }
+          ============================================ */
+
+          const currentPayload =
+            currentResponse?.data ??
+            currentResponse;
+
+
+          const positions =
+            Array.isArray(
+              currentPayload
+                ?.positions
+            )
+              ? currentPayload.positions
+              : [];
+
+
+          setCurrentRentPositions(
+            positions
+          );
+        } catch (err) {
+          console.error(
+            "Load rent data error:",
+            err
+          );
+
+
+          setError(
+            err?.data?.message ||
+              err?.message ||
+              "Unable to load rent data."
+          );
+
+
+          setRentBills(
+            []
+          );
+
+
+          setCurrentRentPositions(
+            []
+          );
+
+
+          setCollectionSummary({
+            collectedThisMonth: 0,
+            lifetimeCollected: 0,
+          });
+        } finally {
+          setLoading(false);
+        }
+      },
+      []
+    );
+
+
+  useEffect(
+    () => {
+      loadRentBills();
+    },
+    [
+      loadRentBills,
+    ]
+  );
 
 
   /* ====================================================
      SUMMARY
   ==================================================== */
 
+  /*
+   * Collected values come from backend.
+   *
+   * Pending and overdue are calculated
+   * from historical outstanding bills.
+   */
   const summary =
-    useMemo(() => {
-      const result = {
-        collectedThisMonth:
-          Number(
-            collectionSummary
-              .collectedThisMonth ||
-              0
-          ),
-
-        lifetimeCollected:
-          Number(
-            collectionSummary
-              .lifetimeCollected ||
-              0
-          ),
-
-        pending: 0,
-
-        overdue: 0,
-      };
-
-
-      /*
-       * Pending and overdue are bill-based.
-       *
-       * Collected amounts are payment-based
-       * and come from the backend.
-       */
-
-      rentBills.forEach(
-        (bill) => {
-          const balance =
+    useMemo(
+      () => {
+        const result = {
+          collectedThisMonth:
             Number(
-              bill.balanceAmount ||
+              collectionSummary
+                .collectedThisMonth ||
                 0
-            );
+            ),
 
-          if (balance <= 0) {
-            return;
+          lifetimeCollected:
+            Number(
+              collectionSummary
+                .lifetimeCollected ||
+                0
+            ),
+
+          pending: 0,
+
+          overdue: 0,
+        };
+
+
+        rentBills.forEach(
+          (bill) => {
+            const balance =
+              Number(
+                bill.balanceAmount ||
+                  0
+              );
+
+
+            if (
+              balance <= 0
+            ) {
+              return;
+            }
+
+
+            if (
+              getBillStatus(
+                bill
+              ) === "OVERDUE"
+            ) {
+              result.overdue +=
+                balance;
+            } else {
+              result.pending +=
+                balance;
+            }
           }
+        );
 
-          const status =
-            getBillStatus(
-              bill
-            );
 
-          if (
-            status ===
-            "OVERDUE"
-          ) {
-            result.overdue +=
-              balance;
-          } else {
-            result.pending +=
-              balance;
-          }
-        }
-      );
-
-      return result;
-    }, [
-      rentBills,
-      collectionSummary,
-    ]);
+        return result;
+      },
+      [
+        rentBills,
+        collectionSummary,
+      ]
+    );
 
 
   /* ====================================================
-     FILTERED BILLS
+     MAIN CURRENT-CYCLE TABLE
   ==================================================== */
 
-  const visibleBills =
-    useMemo(() => {
-      if (
-        statusFilter === "ALL"
-      ) {
-        return rentBills;
-      }
+  const displayRows =
+    useMemo(
+      () => {
+        return currentRentPositions
+          .map(
+            (position) => {
+              const currentBalance =
+                Number(
+                  position
+                    .currentBalanceAmount ??
+                    0
+                );
 
-      return rentBills.filter(
-        (bill) =>
-          getBillStatus(
-            bill
-          ) === statusFilter
-      );
-    }, [
-      rentBills,
-      statusFilter,
-    ]);
+
+              const previousOutstanding =
+                Number(
+                  position
+                    .previousOutstanding ??
+                    0
+                );
+
+
+              const totalOutstanding =
+                Number(
+                  position
+                    .totalOutstanding ??
+                    currentBalance +
+                      previousOutstanding
+                );
+
+
+              return {
+                id:
+                  position
+                    .currentBillId ||
+                  `tenant-${position.tenantId}`,
+
+                type:
+                  "CURRENT",
+
+                tenantId:
+                  position.tenantId,
+
+                tenantName:
+                  position.tenantName,
+
+                tenantMobile:
+                  position.tenantMobile,
+
+                tenantStatus:
+                  position.tenantStatus,
+
+                rentCycleDay:
+                  position.rentCycleDay,
+
+                monthlyRent:
+                  Number(
+                    position.monthlyRent ??
+                      0
+                  ),
+
+                roomId:
+                  position.roomId,
+
+                roomNumber:
+                  position.roomNumber,
+
+                floor:
+                  position.floor,
+
+                currentBillId:
+                  position.currentBillId,
+
+                billingPeriodStart:
+                  position
+                    .billingPeriodStart,
+
+                billingPeriodEnd:
+                  position
+                    .billingPeriodEnd,
+
+                dueDate:
+                  position.dueDate,
+
+                amountDue:
+                  Number(
+                    position
+                      .currentAmountDue ??
+                      0
+                  ),
+
+                amountPaid:
+                  Number(
+                    position
+                      .currentAmountPaid ??
+                      0
+                  ),
+
+                balanceAmount:
+                  currentBalance,
+
+                previousOutstanding,
+
+                totalOutstanding,
+
+                hasPreviousOutstanding:
+                  Boolean(
+                    position
+                      .hasPreviousOutstanding
+                  ) ||
+                  previousOutstanding >
+                    0,
+
+                status:
+                  position
+                    .currentStatus ||
+                  "PENDING",
+              };
+            }
+          )
+          .sort(
+            (
+              first,
+              second
+            ) =>
+              String(
+                first.tenantName ||
+                  ""
+              ).localeCompare(
+                String(
+                  second.tenantName ||
+                    ""
+                )
+              )
+          );
+      },
+      [
+        currentRentPositions,
+      ]
+    );
+
+
+  /* ====================================================
+     STATUS FILTER
+  ==================================================== */
+
+  const visibleRows =
+    useMemo(
+      () => {
+        if (
+          statusFilter ===
+          "ALL"
+        ) {
+          return displayRows;
+        }
+
+
+        return displayRows.filter(
+          (row) => {
+            const status =
+              row.status ||
+              "PENDING";
+
+
+            return (
+              status ===
+              statusFilter
+            );
+          }
+        );
+      },
+      [
+        displayRows,
+        statusFilter,
+      ]
+    );
 
 
   /* ====================================================
@@ -582,133 +921,584 @@ export default function RentPage() {
     Math.max(
       1,
       Math.ceil(
-        visibleBills.length /
+        visibleRows.length /
           PAGE_SIZE
       )
     );
 
 
-  const paginatedBills =
-    useMemo(() => {
-      const start =
-        (currentPage - 1) *
-        PAGE_SIZE;
-
-      const end =
-        start +
-        PAGE_SIZE;
-
-      return visibleBills.slice(
-        start,
-        end
-      );
-    }, [
-      visibleBills,
-      currentPage,
-    ]);
+  const paginatedRows =
+    useMemo(
+      () => {
+        const start =
+          (
+            currentPage -
+            1
+          ) *
+          PAGE_SIZE;
 
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [
-    statusFilter,
-  ]);
+        return visibleRows.slice(
+          start,
+          start +
+            PAGE_SIZE
+        );
+      },
+      [
+        visibleRows,
+        currentPage,
+      ]
+    );
 
 
-  useEffect(() => {
-    if (
-      currentPage >
-      totalPages
-    ) {
-      setCurrentPage(
+  useEffect(
+    () => {
+      setCurrentPage(1);
+    },
+    [
+      statusFilter,
+    ]
+  );
+
+
+  useEffect(
+    () => {
+      if (
+        currentPage >
         totalPages
-      );
-    }
-  }, [
-    currentPage,
-    totalPages,
-  ]);
+      ) {
+        setCurrentPage(
+          totalPages
+        );
+      }
+    },
+    [
+      currentPage,
+      totalPages,
+    ]
+  );
 
 
   /* ====================================================
-     UNPAID BILLS
+     PAYMENT TARGETS
+
+     IMPORTANT:
+
+     These are built from historical
+     outstanding bills, NOT current rows.
+
+     That allows old unpaid bills to remain
+     collectible.
   ==================================================== */
 
-  const unpaidBills =
+  const paymentTargets =
     useMemo(
-      () =>
-        rentBills.filter(
-          (bill) =>
-            Number(
-              bill.balanceAmount ||
-                0
-            ) > 0
-        ),
+      () => {
+        const billsByTenant =
+          new Map();
+
+
+        rentBills.forEach(
+          (bill) => {
+            const balance =
+              Number(
+                bill.balanceAmount ||
+                  0
+              );
+
+
+            if (
+              balance <= 0
+            ) {
+              return;
+            }
+
+
+            if (
+              !billsByTenant.has(
+                bill.tenantId
+              )
+            ) {
+              billsByTenant.set(
+                bill.tenantId,
+                []
+              );
+            }
+
+
+            billsByTenant
+              .get(
+                bill.tenantId
+              )
+              .push(
+                bill
+              );
+          }
+        );
+
+
+        const targets = [];
+
+
+        billsByTenant.forEach(
+          (
+            tenantBills,
+            tenantId
+          ) => {
+            const sortedBills =
+              [
+                ...tenantBills,
+              ].sort(
+                (
+                  first,
+                  second
+                ) =>
+                  String(
+                    first
+                      .billingPeriodStart ||
+                      ""
+                  ).localeCompare(
+                    String(
+                      second
+                        .billingPeriodStart ||
+                        ""
+                    )
+                  )
+              );
+
+
+            /*
+             * One outstanding bill.
+             */
+            if (
+              sortedBills.length ===
+              1
+            ) {
+              targets.push({
+                ...sortedBills[0],
+
+                type:
+                  "BILL",
+              });
+
+
+              return;
+            }
+
+
+            /*
+             * Multiple outstanding bills.
+             */
+            const first =
+              sortedBills[0];
+
+
+            const last =
+              sortedBills[
+                sortedBills.length -
+                  1
+              ];
+
+
+            const amountDue =
+              roundMoney(
+                sortedBills.reduce(
+                  (
+                    total,
+                    bill
+                  ) =>
+                    total +
+                    Number(
+                      bill.amountDue ||
+                        0
+                    ),
+                  0
+                )
+              );
+
+
+            const amountPaid =
+              roundMoney(
+                sortedBills.reduce(
+                  (
+                    total,
+                    bill
+                  ) =>
+                    total +
+                    Number(
+                      bill.amountPaid ||
+                        0
+                    ),
+                  0
+                )
+              );
+
+
+            const balanceAmount =
+              roundMoney(
+                sortedBills.reduce(
+                  (
+                    total,
+                    bill
+                  ) =>
+                    total +
+                    Number(
+                      bill.balanceAmount ||
+                        0
+                    ),
+                  0
+                )
+              );
+
+
+            const dueDates =
+              sortedBills
+                .map(
+                  (bill) =>
+                    bill.dueDate
+                )
+                .filter(
+                  Boolean
+                )
+                .sort();
+
+
+            targets.push({
+              id:
+                `group-${tenantId}`,
+
+              type:
+                "GROUP",
+
+              tenantId,
+
+              tenantName:
+                first.tenantName,
+
+              tenantMobile:
+                first.tenantMobile,
+
+              tenantStatus:
+                first.tenantStatus,
+
+              roomId:
+                first.roomId,
+
+              roomNumber:
+                first.roomNumber,
+
+              floor:
+                first.floor,
+
+              billingPeriodStart:
+                first
+                  .billingPeriodStart,
+
+              billingPeriodEnd:
+                last
+                  .billingPeriodEnd,
+
+              dueDate:
+                dueDates[0] ||
+                first.dueDate,
+
+              amountDue,
+
+              amountPaid,
+
+              balanceAmount,
+
+              status:
+                getGroupedStatus(
+                  sortedBills
+                ),
+
+              bills:
+                sortedBills,
+            });
+          }
+        );
+
+
+        return targets.sort(
+          (
+            first,
+            second
+          ) =>
+            String(
+              first.tenantName ||
+                ""
+            ).localeCompare(
+              String(
+                second.tenantName ||
+                  ""
+              )
+            )
+        );
+      },
       [
         rentBills,
       ]
     );
 
 
-  const selectedBill =
-    useMemo(() => {
-      return (
-        unpaidBills.find(
-          (bill) =>
-            bill.id ===
-            selectedBillId
-        ) || null
-      );
-    }, [
-      unpaidBills,
-      selectedBillId,
-    ]);
+  /* ====================================================
+     SELECTED PAYMENT TARGET
+  ==================================================== */
+
+  const selectedPaymentTarget =
+    useMemo(
+      () =>
+        paymentTargets.find(
+          (target) =>
+            target.id ===
+            selectedPaymentTargetId
+        ) ||
+        null,
+      [
+        paymentTargets,
+        selectedPaymentTargetId,
+      ]
+    );
+
+
+  /*
+   * Current tenant position is the preferred
+   * source for tenant status.
+   */
+  const selectedTenantPosition =
+    useMemo(
+      () => {
+        if (
+          !selectedPaymentTarget
+        ) {
+          return null;
+        }
+
+
+        return (
+          currentRentPositions.find(
+            (position) =>
+              position.tenantId ===
+              selectedPaymentTarget
+                .tenantId
+          ) ||
+          null
+        );
+      },
+      [
+        currentRentPositions,
+        selectedPaymentTarget,
+      ]
+    );
+
+
+  const selectedTenantStatus =
+    selectedTenantPosition
+      ?.tenantStatus ||
+    selectedPaymentTarget
+      ?.tenantStatus ||
+    "";
+
+
+  const tenantAlreadyInNotice =
+    selectedTenantStatus ===
+    "NOTICE_PERIOD";
+
+
+  const tenantCanStartNotice =
+    selectedTenantStatus ===
+    "ACTIVE";
+
+
+  const isMultiBillPayment =
+    selectedPaymentTarget
+      ?.type ===
+    "GROUP";
+
+
+  const selectedAllocationBills =
+    isMultiBillPayment
+      ? selectedPaymentTarget
+          .bills
+      : [];
+
+
+  const allocatedAmount =
+    useMemo(
+      () =>
+        roundMoney(
+          Object.values(
+            paymentAllocations
+          ).reduce(
+            (
+              total,
+              value
+            ) =>
+              total +
+              Number(
+                value || 0
+              ),
+            0
+          )
+        ),
+      [
+        paymentAllocations,
+      ]
+    );
+
+
+  const numericPaymentAmount =
+    Number(
+      paymentAmount || 0
+    );
+
+
+  const remainingAllocation =
+    roundMoney(
+      numericPaymentAmount -
+        allocatedAmount
+    );
 
 
   /* ====================================================
-     PAYMENT MODAL OPEN
+     PAYMENT MODAL HELPERS
   ==================================================== */
 
-  function openPaymentModal(
-    bill = null
+  function createDefaultAllocations(
+    target
   ) {
-    const firstBill =
-      bill ||
-      unpaidBills[0] ||
+    if (
+      !target ||
+      target.type !==
+        "GROUP"
+    ) {
+      return {};
+    }
+
+
+    const allocations = {};
+
+
+    target.bills.forEach(
+      (bill) => {
+        allocations[bill.id] =
+          String(
+            Number(
+              bill.balanceAmount ||
+                0
+            )
+          );
+      }
+    );
+
+
+    return allocations;
+  }
+
+
+  function findPaymentTargetForRow(
+    row
+  ) {
+    if (!row) {
+      return null;
+    }
+
+
+    return (
+      paymentTargets.find(
+        (target) =>
+          target.tenantId ===
+          row.tenantId
+      ) ||
+      null
+    );
+  }
+
+
+  function openPaymentModal(
+    target = null
+  ) {
+    let resolvedTarget =
+      target;
+
+
+    /*
+     * Main table passes a CURRENT row.
+     * Resolve it to the actual outstanding
+     * historical payment target.
+     */
+    if (
+      target?.type ===
+      "CURRENT"
+    ) {
+      resolvedTarget =
+        findPaymentTargetForRow(
+          target
+        );
+    }
+
+
+    const firstTarget =
+      resolvedTarget ||
+      paymentTargets[0] ||
       null;
+
 
     setPaymentModalOpen(
       true
     );
 
-    setSelectedBillId(
-      firstBill?.id || ""
+
+    setSelectedPaymentTargetId(
+      firstTarget?.id ||
+        ""
     );
 
+
     setPaymentAmount(
-      firstBill
+      firstTarget
         ? String(
             Number(
-              firstBill.balanceAmount ||
+              firstTarget
+                .balanceAmount ||
                 0
             )
           )
         : ""
     );
 
+
+    setPaymentAllocations(
+      createDefaultAllocations(
+        firstTarget
+      )
+    );
+
+
     setPaymentMode(
       "UPI"
     );
+
 
     setPaymentDate(
       getTodayInputDate()
     );
 
+
     setPaymentReference(
       ""
     );
 
-    setPaymentError("");
+
+    setMarkNoticePeriod(
+      false
+    );
+
+
+    setPaymentError(
+      ""
+    );
   }
 
 
@@ -719,66 +1509,127 @@ export default function RentPage() {
       return;
     }
 
+
     setPaymentModalOpen(
       false
     );
 
-    setSelectedBillId(
+
+    setSelectedPaymentTargetId(
       ""
     );
+
 
     setPaymentAmount(
       ""
     );
+
+
+    setPaymentAllocations(
+      {}
+    );
+
 
     setPaymentMode(
       "UPI"
     );
 
+
     setPaymentDate(
       getTodayInputDate()
     );
+
 
     setPaymentReference(
       ""
     );
 
-    setPaymentError("");
+
+    setMarkNoticePeriod(
+      false
+    );
+
+
+    setPaymentError(
+      ""
+    );
   }
 
 
-  /* ====================================================
-     CHANGE SELECTED BILL
-  ==================================================== */
-
-  function handleSelectedBillChange(
+  function handleSelectedPaymentTargetChange(
     event
   ) {
-    const billId =
+    const targetId =
       event.target.value;
 
-    setSelectedBillId(
-      billId
+
+    const target =
+      paymentTargets.find(
+        (item) =>
+          item.id ===
+          targetId
+      ) ||
+      null;
+
+
+    setSelectedPaymentTargetId(
+      targetId
     );
 
-    const bill =
-      unpaidBills.find(
-        (item) =>
-          item.id === billId
-      );
 
     setPaymentAmount(
-      bill
+      target
         ? String(
             Number(
-              bill.balanceAmount ||
+              target
+                .balanceAmount ||
                 0
             )
           )
         : ""
     );
 
-    setPaymentError("");
+
+    setPaymentAllocations(
+      createDefaultAllocations(
+        target
+      )
+    );
+
+
+    /*
+     * Important:
+     * Never carry notice selection to
+     * another tenant.
+     */
+    setMarkNoticePeriod(
+      false
+    );
+
+
+    setPaymentError(
+      ""
+    );
+  }
+
+
+  function handleAllocationChange(
+    billId,
+    value
+  ) {
+    setPaymentAllocations(
+      (current) => ({
+        ...current,
+
+        [billId]:
+          value,
+      })
+    );
+
+
+    setPaymentError(
+      ""
+    );
   }
 
 
@@ -791,24 +1642,32 @@ export default function RentPage() {
   ) {
     event.preventDefault();
 
-    if (!selectedBill) {
+
+    if (
+      !selectedPaymentTarget
+    ) {
       setPaymentError(
         "Select a rent bill."
       );
 
+
       return;
     }
 
+
     const amount =
-      Number(
+      roundMoney(
         paymentAmount
       );
 
-    const balance =
+
+    const totalBalance =
       Number(
-        selectedBill.balanceAmount ||
+        selectedPaymentTarget
+          .balanceAmount ||
           0
       );
+
 
     if (
       !Number.isFinite(
@@ -820,132 +1679,368 @@ export default function RentPage() {
         "Enter a valid payment amount."
       );
 
+
       return;
     }
 
+
     if (
-      amount > balance
+      amount >
+      totalBalance
     ) {
       setPaymentError(
         `Payment cannot exceed ${formatCurrency(
-          balance
+          totalBalance
         )}.`
       );
+
 
       return;
     }
 
-    if (!paymentDate) {
+
+    if (
+      !paymentDate
+    ) {
       setPaymentError(
         "Select payment date."
       );
 
+
       return;
     }
+
+
+    /*
+     * Frontend protection.
+     * Backend still remains authoritative.
+     */
+    if (
+      markNoticePeriod &&
+      !tenantCanStartNotice
+    ) {
+      setPaymentError(
+        tenantAlreadyInNotice
+          ? "Tenant is already in notice period."
+          : "Only an active tenant can be marked as notice period."
+      );
+
+
+      return;
+    }
+
 
     try {
       setPaymentSubmitting(
         true
       );
 
-      setPaymentError("");
 
-      await apiRequest(
-        "/api/payments",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-
-          body: JSON.stringify({
-            tenantId:
-              selectedBill.tenantId,
-
-            rentBillId:
-              selectedBill.id,
-
-            amount,
-
-            mode:
-              paymentMode,
-
-            paymentDate,
-          }),
-        }
+      setPaymentError(
+        ""
       );
 
 
-      /* ==================================================
-         CLEAR CACHED PAYMENT HISTORY FOR THIS BILL
-      ================================================== */
+      /* ================================================
+         SINGLE BILL PAYMENT
+      ================================================ */
 
-      setBillPaymentsCache(
-        (current) => {
-          const next = {
-            ...current,
-          };
+      if (
+        !isMultiBillPayment
+      ) {
+        await apiRequest(
+          "/api/payments",
+          {
+            method:
+              "POST",
 
-          delete next[
-            selectedBill.id
-          ];
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
 
-          return next;
+            body:
+              JSON.stringify({
+                tenantId:
+                  selectedPaymentTarget
+                    .tenantId,
+
+                rentBillId:
+                  selectedPaymentTarget
+                    .id,
+
+                amount,
+
+                mode:
+                  paymentMode,
+
+                paymentDate,
+
+                notes:
+                  paymentReference
+                    .trim() ||
+                  null,
+
+                markNoticePeriod:
+                  markNoticePeriod ===
+                  true,
+              }),
+          }
+        );
+
+
+        setBillPaymentsCache(
+          (current) => {
+            const next = {
+              ...current,
+            };
+
+
+            delete next[
+              selectedPaymentTarget
+                .id
+            ];
+
+
+            return next;
+          }
+        );
+      }
+
+      /* ================================================
+         MULTI BILL PAYMENT
+      ================================================ */
+
+      else {
+        const allocations =
+          [];
+
+
+        for (
+          const bill of
+          selectedAllocationBills
+        ) {
+          const allocationAmount =
+            roundMoney(
+              paymentAllocations[
+                bill.id
+              ] ||
+                0
+            );
+
+
+          if (
+            allocationAmount <
+            0
+          ) {
+            throw new Error(
+              "Allocation cannot be negative."
+            );
+          }
+
+
+          const billBalance =
+            Number(
+              bill.balanceAmount ||
+                0
+            );
+
+
+          if (
+            allocationAmount >
+            billBalance
+          ) {
+            throw new Error(
+              `Allocation for ${formatCycleDate(
+                bill.billingPeriodStart
+              )} – ${formatCycleDate(
+                bill.billingPeriodEnd
+              )} cannot exceed ${formatCurrency(
+                billBalance
+              )}.`
+            );
+          }
+
+
+          if (
+            allocationAmount >
+            0
+          ) {
+            allocations.push({
+              rentBillId:
+                bill.id,
+
+              amount:
+                allocationAmount,
+            });
+          }
         }
-      );
 
 
-      /* ==================================================
-         RELOAD BILLS + PAYMENT-BASED SUMMARY
-      ================================================== */
+        if (
+          allocations.length ===
+          0
+        ) {
+          throw new Error(
+            "Allocate the payment to at least one bill."
+          );
+        }
 
+
+        const allocationTotal =
+          roundMoney(
+            allocations.reduce(
+              (
+                total,
+                allocation
+              ) =>
+                total +
+                allocation.amount,
+              0
+            )
+          );
+
+
+        if (
+          allocationTotal !==
+          amount
+        ) {
+          throw new Error(
+            `Allocated amount must equal payment amount. Remaining: ${formatCurrency(
+              amount -
+                allocationTotal
+            )}.`
+          );
+        }
+
+
+        await apiRequest(
+          "/api/payments",
+          {
+            method:
+              "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                tenantId:
+                  selectedPaymentTarget
+                    .tenantId,
+
+                amount,
+
+                allocations,
+
+                mode:
+                  paymentMode,
+
+                paymentDate,
+
+                notes:
+                  paymentReference
+                    .trim() ||
+                  null,
+
+                markNoticePeriod:
+                  markNoticePeriod ===
+                  true,
+              }),
+          }
+        );
+
+
+        setBillPaymentsCache(
+          (current) => {
+            const next = {
+              ...current,
+            };
+
+
+            allocations.forEach(
+              (allocation) => {
+                delete next[
+                  allocation
+                    .rentBillId
+                ];
+              }
+            );
+
+
+            return next;
+          }
+        );
+      }
+
+
+      /*
+       * Reload historical bills AND current
+       * positions after payment.
+       *
+       * This also refreshes tenantStatus when
+       * notice period was started.
+       */
       await loadRentBills();
 
-
-      /* ==================================================
-         CLOSE + RESET PAYMENT MODAL
-      ================================================== */
 
       setPaymentModalOpen(
         false
       );
 
-      setSelectedBillId(
+
+      setSelectedPaymentTargetId(
         ""
       );
+
 
       setPaymentAmount(
         ""
       );
 
+
+      setPaymentAllocations(
+        {}
+      );
+
+
       setPaymentMode(
         "UPI"
       );
+
 
       setPaymentDate(
         getTodayInputDate()
       );
 
+
       setPaymentReference(
         ""
       );
 
-      setPaymentError("");
 
+      setMarkNoticePeriod(
+        false
+      );
+
+
+      setPaymentError(
+        ""
+      );
     } catch (err) {
       console.error(
         "Record payment error:",
         err
       );
 
+
       setPaymentError(
         err?.data?.message ||
           err?.message ||
           "Unable to record payment."
       );
-
     } finally {
       setPaymentSubmitting(
         false
@@ -955,26 +2050,31 @@ export default function RentPage() {
 
 
   /* ====================================================
-     OPEN BILL DETAILS
+     BILL DETAILS
   ==================================================== */
 
   async function openBillDetails(
     bill
   ) {
+    if (!bill) {
+      return;
+    }
+
+
     setSelectedViewBill(
       bill
     );
 
-    setBillDetailsError("");
+
+    setBillDetailsError(
+      ""
+    );
+
 
     setBillDetailsModalOpen(
       true
     );
 
-
-    /* ================================================
-       USE CACHED PAYMENTS
-    ================================================ */
 
     if (
       billPaymentsCache[
@@ -987,33 +2087,37 @@ export default function RentPage() {
         ]
       );
 
+
       setBillDetailsLoading(
         false
       );
+
 
       return;
     }
 
 
-    /* ================================================
-       LOAD PAYMENTS FIRST TIME ONLY
-    ================================================ */
+    setBillPayments(
+      []
+    );
 
-    setBillPayments([]);
 
     try {
       setBillDetailsLoading(
         true
       );
 
+
       const response =
         await apiRequest(
           `/api/tenants/${bill.tenantId}`
         );
 
+
       const tenant =
         response?.data ??
         response;
+
 
       const payments =
         Array.isArray(
@@ -1031,17 +2135,19 @@ export default function RentPage() {
               bill.id
           )
           .sort(
-            (a, b) =>
-              new Date(
-                b.paymentDate
-              ).getTime() -
-              new Date(
-                a.paymentDate
-              ).getTime()
+            (
+              first,
+              second
+            ) =>
+              String(
+                second.paymentDate
+              ).localeCompare(
+                String(
+                  first.paymentDate
+                )
+              )
           );
 
-
-      /* SAVE FOR FUTURE VIEW CLICKS */
 
       setBillPaymentsCache(
         (current) => ({
@@ -1062,6 +2168,7 @@ export default function RentPage() {
         err
       );
 
+
       setBillDetailsError(
         err?.data?.message ||
           err?.message ||
@@ -1080,13 +2187,20 @@ export default function RentPage() {
       false
     );
 
+
     setSelectedViewBill(
       null
     );
 
-    setBillPayments([]);
 
-    setBillDetailsError("");
+    setBillPayments(
+      []
+    );
+
+
+    setBillDetailsError(
+      ""
+    );
   }
 
 
@@ -1102,15 +2216,16 @@ export default function RentPage() {
       <div className="rent-fixed-header">
 
         <div>
+
           <h1>
             Rent &amp; Payments
           </h1>
 
           <p>
-            Bill-centric financial tracking
-            with multiple manual payments
-            per bill.
+            Current rent-cycle financial
+            position for each tenant.
           </p>
+
         </div>
 
 
@@ -1121,7 +2236,7 @@ export default function RentPage() {
             openPaymentModal()
           }
           disabled={
-            unpaidBills.length ===
+            paymentTargets.length ===
             0
           }
         >
@@ -1137,6 +2252,7 @@ export default function RentPage() {
         <div className="rent-fixed-error">
 
           <div>
+
             <AlertTriangle
               size={17}
             />
@@ -1144,6 +2260,7 @@ export default function RentPage() {
             <span>
               {error}
             </span>
+
           </div>
 
 
@@ -1163,7 +2280,7 @@ export default function RentPage() {
       ) : null}
 
 
-      {/* SUMMARY CARDS */}
+      {/* SUMMARY */}
 
       <div className="rent-fixed-summary-grid">
 
@@ -1237,14 +2354,14 @@ export default function RentPage() {
       </div>
 
 
-      {/* RENT BILLS TABLE */}
+      {/* TABLE */}
 
       <section className="rent-fixed-table-card">
 
         <div className="rent-fixed-table-header">
 
           <h2>
-            Rent bills
+            Current rent cycles
           </h2>
 
 
@@ -1346,7 +2463,7 @@ export default function RentPage() {
                       <div className="rent-fixed-spinner" />
 
                       <strong>
-                        Loading rent bills...
+                        Loading rent cycles...
                       </strong>
 
                     </div>
@@ -1358,54 +2475,76 @@ export default function RentPage() {
 
 
               {!loading &&
-              paginatedBills.length >
+              paginatedRows.length >
                 0
-                ? paginatedBills.map(
-                    (bill) => {
+                ? paginatedRows.map(
+                    (row) => {
                       const status =
-                        getBillStatus(
-                          bill
+                        row.status ||
+                        "PENDING";
+
+
+                      const paymentTarget =
+                        findPaymentTargetForRow(
+                          row
                         );
 
-                      const balance =
-                        Number(
-                          bill.balanceAmount ||
-                            0
-                        );
 
                       return (
                         <tr
                           key={
-                            bill.id
+                            row.id
                           }
                         >
+
+                          {/* TENANT */}
 
                           <td>
 
                             <div className="rent-fixed-tenant">
 
                               <strong>
-                                {bill.tenantName ||
+                                {row.tenantName ||
                                   "—"}
                               </strong>
 
                               <span>
                                 Room{" "}
-                                {bill.roomNumber ||
+                                {row.roomNumber ||
                                   "—"}
                               </span>
+
+
+                              {row.billingPeriodStart &&
+                              row.billingPeriodEnd ? (
+                                <span>
+
+                                  {formatCycleDate(
+                                    row.billingPeriodStart
+                                  )}
+
+                                  {" – "}
+
+                                  {formatCycleDate(
+                                    row.billingPeriodEnd
+                                  )}
+
+                                </span>
+                              ) : null}
 
                             </div>
 
                           </td>
 
 
+                          {/* PHONE */}
+
                           <td>
 
                             <span className="rent-fixed-money">
 
-                              {bill.tenantMobile
-                                ? `+91 ${bill.tenantMobile}`
+                              {row.tenantMobile
+                                ? `+91 ${row.tenantMobile}`
                                 : "—"}
 
                             </span>
@@ -1413,57 +2552,90 @@ export default function RentPage() {
                           </td>
 
 
+                          {/* DUE DATE */}
+
                           <td>
 
                             <span className="rent-fixed-cycle">
 
                               {formatCycleDate(
-                                bill.billingPeriodStart
+                                row.dueDate
                               )}
 
                             </span>
 
                           </td>
 
+
+                          {/* CURRENT RENT */}
 
                           <td>
 
                             <span className="rent-fixed-money">
 
                               {formatCurrency(
-                                bill.amountDue
+                                row.amountDue
                               )}
 
                             </span>
 
                           </td>
 
+
+                          {/* CURRENT PAID */}
 
                           <td>
 
                             <span className="rent-fixed-money">
 
                               {formatCurrency(
-                                bill.amountPaid
+                                row.amountPaid
                               )}
 
                             </span>
 
                           </td>
 
+
+                          {/* TOTAL OUTSTANDING */}
 
                           <td>
 
-                            <span className="rent-fixed-money">
+                            <div className="rent-fixed-tenant">
 
-                              {formatCurrency(
-                                bill.balanceAmount
-                              )}
+                              <strong className="rent-fixed-money">
 
-                            </span>
+                                {formatCurrency(
+                                  row.totalOutstanding
+                                )}
+
+                              </strong>
+
+
+                              {row.hasPreviousOutstanding ? (
+                                <span>
+
+                                  Current{" "}
+
+                                  {formatCurrency(
+                                    row.balanceAmount
+                                  )}
+
+                                  {" · Previous "}
+
+                                  {formatCurrency(
+                                    row.previousOutstanding
+                                  )}
+
+                                </span>
+                              ) : null}
+
+                            </div>
 
                           </td>
 
+
+                          {/* STATUS */}
 
                           <td>
 
@@ -1478,33 +2650,49 @@ export default function RentPage() {
                           </td>
 
 
+                          {/* ACTION */}
+
                           <td className="rent-fixed-action-cell">
 
-                            {balance > 0 ? (
+                            {paymentTarget ? (
                               <button
                                 type="button"
                                 className="rent-fixed-record-button"
                                 onClick={() =>
                                   openPaymentModal(
-                                    bill
+                                    row
                                   )
                                 }
                               >
                                 Record
                               </button>
-                            ) : (
+                            ) : row.currentBillId ? (
                               <button
                                 type="button"
                                 className="rent-fixed-view-button"
-                                onClick={() =>
-                                  openBillDetails(
-                                    bill
-                                  )
-                                }
+                                onClick={() => {
+                                  const historicalBill =
+                                    rentBills.find(
+                                      (
+                                        bill
+                                      ) =>
+                                        bill.id ===
+                                        row.currentBillId
+                                    );
+
+
+                                  if (
+                                    historicalBill
+                                  ) {
+                                    openBillDetails(
+                                      historicalBill
+                                    );
+                                  }
+                                }}
                               >
                                 View
                               </button>
-                            )}
+                            ) : null}
 
                           </td>
 
@@ -1516,7 +2704,7 @@ export default function RentPage() {
 
 
               {!loading &&
-              visibleBills.length ===
+              visibleRows.length ===
                 0 ? (
                 <tr>
 
@@ -1528,11 +2716,11 @@ export default function RentPage() {
                     <div className="rent-fixed-empty">
 
                       <strong>
-                        No rent bills found
+                        No current rent cycles found
                       </strong>
 
                       <p>
-                        There are no bills
+                        There are no tenants
                         matching this status.
                       </p>
 
@@ -1553,7 +2741,8 @@ export default function RentPage() {
         {/* PAGINATION */}
 
         {!loading &&
-        visibleBills.length > 0 ? (
+        visibleRows.length >
+          0 ? (
           <div className="rent-fixed-pagination">
 
             <div className="rent-fixed-pagination-info">
@@ -1561,7 +2750,8 @@ export default function RentPage() {
               Showing{" "}
 
               <strong>
-                {(currentPage - 1) *
+                {(currentPage -
+                  1) *
                   PAGE_SIZE +
                   1}
               </strong>
@@ -1572,17 +2762,17 @@ export default function RentPage() {
                 {Math.min(
                   currentPage *
                     PAGE_SIZE,
-                  visibleBills.length
+                  visibleRows.length
                 )}
               </strong>
 
               {" of "}
 
               <strong>
-                {visibleBills.length}
+                {visibleRows.length}
               </strong>
 
-              {" bills"}
+              {" tenants"}
 
             </div>
 
@@ -1601,7 +2791,8 @@ export default function RentPage() {
                   )
                 }
                 disabled={
-                  currentPage === 1
+                  currentPage ===
+                  1
                 }
               >
                 Previous
@@ -1615,7 +2806,10 @@ export default function RentPage() {
                     length:
                       totalPages,
                   },
-                  (_, index) =>
+                  (
+                    _,
+                    index
+                  ) =>
                     index + 1
                 ).map(
                   (page) => (
@@ -1626,7 +2820,7 @@ export default function RentPage() {
                       type="button"
                       className={
                         currentPage ===
-                          page
+                        page
                           ? "active"
                           : ""
                       }
@@ -1671,7 +2865,9 @@ export default function RentPage() {
       </section>
 
 
-      {/* RENT BILL DETAILS MODAL */}
+      {/* ==================================================
+          BILL DETAILS MODAL
+      ================================================== */}
 
       {billDetailsModalOpen &&
       selectedViewBill ? (
@@ -1734,13 +2930,15 @@ export default function RentPage() {
                   </span>
 
                   <strong>
-                    {selectedViewBill.tenantName ||
+                    {selectedViewBill
+                      .tenantName ||
                       "—"}
                   </strong>
 
                   <p>
                     Room{" "}
-                    {selectedViewBill.roomNumber ||
+                    {selectedViewBill
+                      .roomNumber ||
                       "—"}
                   </p>
 
@@ -1771,15 +2969,19 @@ export default function RentPage() {
                   </span>
 
                   <strong>
+
                     {formatCycleDate(
-                      selectedViewBill.billingPeriodStart
+                      selectedViewBill
+                        .billingPeriodStart
                     )}
 
                     {" – "}
 
                     {formatCycleDate(
-                      selectedViewBill.billingPeriodEnd
+                      selectedViewBill
+                        .billingPeriodEnd
                     )}
+
                   </strong>
 
                 </div>
@@ -1793,7 +2995,8 @@ export default function RentPage() {
 
                   <strong>
                     {formatFullDate(
-                      selectedViewBill.dueDate
+                      selectedViewBill
+                        .dueDate
                     )}
                   </strong>
 
@@ -1808,7 +3011,8 @@ export default function RentPage() {
 
                   <strong>
                     {formatCurrency(
-                      selectedViewBill.amountDue
+                      selectedViewBill
+                        .amountDue
                     )}
                   </strong>
 
@@ -1823,7 +3027,8 @@ export default function RentPage() {
 
                   <strong>
                     {formatCurrency(
-                      selectedViewBill.amountPaid
+                      selectedViewBill
+                        .amountPaid
                     )}
                   </strong>
 
@@ -1838,7 +3043,8 @@ export default function RentPage() {
 
                   <strong>
                     {formatCurrency(
-                      selectedViewBill.balanceAmount
+                      selectedViewBill
+                        .balanceAmount
                     )}
                   </strong>
 
@@ -1858,11 +3064,14 @@ export default function RentPage() {
 
                   {!billDetailsLoading ? (
                     <span>
+
                       {billPayments.length}{" "}
+
                       {billPayments.length ===
                       1
                         ? "payment"
                         : "payments"}
+
                     </span>
                   ) : null}
 
@@ -1898,7 +3107,8 @@ export default function RentPage() {
 
 
                 {!billDetailsLoading &&
-                billPayments.length > 0 ? (
+                billPayments.length >
+                  0 ? (
                   <div className="rent-bill-payment-table-wrap">
 
                     <table className="rent-bill-payment-table">
@@ -1939,40 +3149,59 @@ export default function RentPage() {
                             >
 
                               <td>
-                                {new Intl.DateTimeFormat(
-                                  "en-IN",
-                                  {
-                                    month: "long",
-                                    year: "numeric",
-                                  }
-                                ).format(
-                                  new Date(
-                                    selectedViewBill.billingPeriodStart
-                                  )
-                                )}
+
+                                {parseDateOnly(
+                                  selectedViewBill
+                                    .billingPeriodStart
+                                )
+                                  ? new Intl.DateTimeFormat(
+                                      "en-IN",
+                                      {
+                                        month:
+                                          "long",
+
+                                        year:
+                                          "numeric",
+                                      }
+                                    ).format(
+                                      parseDateOnly(
+                                        selectedViewBill
+                                          .billingPeriodStart
+                                      )
+                                    )
+                                  : "—"}
+
                               </td>
 
 
                               <td>
+
                                 {formatFullDate(
                                   payment.paymentDate
                                 )}
+
                               </td>
 
 
                               <td>
+
                                 {formatPaymentMode(
                                   payment.mode
                                 )}
+
                               </td>
 
 
                               <td>
+
                                 <strong>
+
                                   {formatCurrency(
                                     payment.amount
                                   )}
+
                                 </strong>
+
                               </td>
 
                             </tr>
@@ -2029,7 +3258,9 @@ export default function RentPage() {
       ) : null}
 
 
-      {/* RECORD PAYMENT MODAL */}
+      {/* ==================================================
+          RECORD PAYMENT MODAL
+      ================================================== */}
 
       {paymentModalOpen ? (
         <div
@@ -2097,6 +3328,8 @@ export default function RentPage() {
                 ) : null}
 
 
+                {/* RENT BILL / GROUP */}
+
                 <div className="rent-payment-field rent-payment-field-full">
 
                   <label
@@ -2109,10 +3342,10 @@ export default function RentPage() {
                   <select
                     id="rentBill"
                     value={
-                      selectedBillId
+                      selectedPaymentTargetId
                     }
                     onChange={
-                      handleSelectedBillChange
+                      handleSelectedPaymentTargetChange
                     }
                     disabled={
                       paymentSubmitting
@@ -2120,30 +3353,38 @@ export default function RentPage() {
                     required
                   >
 
-                    {unpaidBills.map(
-                      (bill) => (
+                    {paymentTargets.map(
+                      (target) => (
                         <option
                           key={
-                            bill.id
+                            target.id
                           }
                           value={
-                            bill.id
+                            target.id
                           }
                         >
-                          {bill.tenantName}
+
+                          {target.tenantName}
+
                           {" · "}
-                          {formatCycleDate(
-                            bill.billingPeriodStart
-                          )}
-                          {" – "}
-                          {formatCycleDate(
-                            bill.billingPeriodEnd
-                          )}
+
+                          {target.type ===
+                          "GROUP"
+                            ? `${target.bills.length} outstanding bills`
+                            : `${formatCycleDate(
+                                target.billingPeriodStart
+                              )} – ${formatCycleDate(
+                                target.billingPeriodEnd
+                              )}`}
+
                           {" · "}
+
                           {formatCurrency(
-                            bill.balanceAmount
+                            target.balanceAmount
                           )}
+
                           {" balance"}
+
                         </option>
                       )
                     )}
@@ -2153,6 +3394,8 @@ export default function RentPage() {
                 </div>
 
 
+                {/* AMOUNT + MODE */}
+
                 <div className="rent-payment-form-grid">
 
                   <div className="rent-payment-field">
@@ -2160,7 +3403,9 @@ export default function RentPage() {
                     <label
                       htmlFor="paymentAmount"
                     >
-                      AMOUNT
+                      {isMultiBillPayment
+                        ? "TOTAL AMOUNT"
+                        : "AMOUNT"}
                     </label>
 
 
@@ -2170,9 +3415,10 @@ export default function RentPage() {
                       min="0.01"
                       step="0.01"
                       max={
-                        selectedBill
+                        selectedPaymentTarget
                           ? Number(
-                              selectedBill.balanceAmount ||
+                              selectedPaymentTarget
+                                .balanceAmount ||
                                 0
                             )
                           : undefined
@@ -2182,11 +3428,15 @@ export default function RentPage() {
                       }
                       onChange={(
                         event
-                      ) =>
+                      ) => {
                         setPaymentAmount(
                           event.target.value
-                        )
-                      }
+                        );
+
+                        setPaymentError(
+                          ""
+                        );
+                      }}
                       disabled={
                         paymentSubmitting
                       }
@@ -2245,6 +3495,8 @@ export default function RentPage() {
                 </div>
 
 
+                {/* PAYMENT DATE + NOTE */}
+
                 <div className="rent-payment-form-grid">
 
                   <div className="rent-payment-field">
@@ -2262,17 +3514,17 @@ export default function RentPage() {
                       value={
                         paymentDate
                       }
-                      onChange={(event) =>{
-                    console.log(
-                      "Payment date changed:",
-                      event.target.value
-                    )
-                    setPaymentDate(
-                      event.target
-                        .value
-                    )
-                  }
-                  }
+                      onChange={(
+                        event
+                      ) => {
+                        setPaymentDate(
+                          event.target.value
+                        );
+
+                        setPaymentError(
+                          ""
+                        );
+                      }}
                       disabled={
                         paymentSubmitting
                       }
@@ -2295,6 +3547,7 @@ export default function RentPage() {
                       id="paymentReference"
                       type="text"
                       placeholder="Optional"
+                      maxLength={500}
                       value={
                         paymentReference
                       }
@@ -2315,11 +3568,386 @@ export default function RentPage() {
                 </div>
 
 
+                {/* MULTI-BILL ALLOCATION */}
+
+                {isMultiBillPayment ? (
+                  <div className="rent-payment-field rent-payment-field-full">
+
+                    <label>
+                      ADJUST PAYMENT
+                    </label>
+
+
+                    <div
+                      style={{
+                        display:
+                          "grid",
+
+                        gap:
+                          "10px",
+                      }}
+                    >
+
+                      {selectedAllocationBills.map(
+                        (bill) => (
+                          <div
+                            key={
+                              bill.id
+                            }
+                            style={{
+                              display:
+                                "grid",
+
+                              gridTemplateColumns:
+                                "1fr minmax(120px, 160px)",
+
+                              gap:
+                                "12px",
+
+                              alignItems:
+                                "center",
+
+                              padding:
+                                "10px 0",
+
+                              borderBottom:
+                                "1px solid rgba(148, 163, 184, 0.18)",
+                            }}
+                          >
+
+                            <div>
+
+                              <strong>
+
+                                {formatCycleDate(
+                                  bill.billingPeriodStart
+                                )}
+
+                                {" – "}
+
+                                {formatCycleDate(
+                                  bill.billingPeriodEnd
+                                )}
+
+                              </strong>
+
+
+                              <div
+                                style={{
+                                  marginTop:
+                                    "3px",
+
+                                  fontSize:
+                                    "12px",
+
+                                  opacity:
+                                    0.7,
+                                }}
+                              >
+
+                                Outstanding{" "}
+
+                                {formatCurrency(
+                                  bill.balanceAmount
+                                )}
+
+                              </div>
+
+                            </div>
+
+
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              max={
+                                Number(
+                                  bill.balanceAmount ||
+                                    0
+                                )
+                              }
+                              value={
+                                paymentAllocations[
+                                  bill.id
+                                ] ??
+                                ""
+                              }
+                              onChange={(
+                                event
+                              ) =>
+                                handleAllocationChange(
+                                  bill.id,
+                                  event.target.value
+                                )
+                              }
+                              disabled={
+                                paymentSubmitting
+                              }
+                            />
+
+                          </div>
+                        )
+                      )}
+
+
+                      <div
+                        style={{
+                          display:
+                            "grid",
+
+                          gridTemplateColumns:
+                            "1fr auto",
+
+                          rowGap:
+                            "4px",
+
+                          marginTop:
+                            "4px",
+
+                          fontSize:
+                            "13px",
+                        }}
+                      >
+
+                        <span>
+                          Payment amount
+                        </span>
+
+                        <strong>
+
+                          {formatCurrency(
+                            numericPaymentAmount
+                          )}
+
+                        </strong>
+
+
+                        <span>
+                          Allocated
+                        </span>
+
+                        <strong>
+
+                          {formatCurrency(
+                            allocatedAmount
+                          )}
+
+                        </strong>
+
+
+                        <span>
+                          Remaining
+                        </span>
+
+                        <strong>
+
+                          {formatCurrency(
+                            remainingAllocation
+                          )}
+
+                        </strong>
+
+                      </div>
+
+                    </div>
+
+                  </div>
+                ) : null}
+
+
+                {/* ======================================
+                    NOTICE PERIOD
+                ====================================== */}
+
+                {selectedPaymentTarget ? (
+                  <div
+                    className="rent-payment-field rent-payment-field-full"
+                    style={{
+                      marginTop:
+                        "2px",
+                    }}
+                  >
+
+                    {tenantCanStartNotice ? (
+                      <label
+                        htmlFor="markNoticePeriod"
+                        style={{
+                          display:
+                            "flex",
+
+                          alignItems:
+                            "flex-start",
+
+                          gap:
+                            "10px",
+
+                          cursor:
+                            paymentSubmitting
+                              ? "default"
+                              : "pointer",
+
+                          textTransform:
+                            "none",
+
+                          letterSpacing:
+                            "normal",
+                        }}
+                      >
+
+                        <input
+                          id="markNoticePeriod"
+                          type="checkbox"
+                          checked={
+                            markNoticePeriod
+                          }
+                          onChange={(
+                            event
+                          ) => {
+                            setMarkNoticePeriod(
+                              event.target.checked
+                            );
+
+                            setPaymentError(
+                              ""
+                            );
+                          }}
+                          disabled={
+                            paymentSubmitting
+                          }
+                          style={{
+                            width:
+                              "16px",
+
+                            height:
+                              "16px",
+
+                            marginTop:
+                              "2px",
+
+                            flexShrink:
+                              0,
+                          }}
+                        />
+
+
+                        <span>
+
+                          <strong
+                            style={{
+                              display:
+                                "block",
+                            }}
+                          >
+                            Mark tenant as Notice Period
+                          </strong>
+
+
+                          <span
+                            style={{
+                              display:
+                                "block",
+
+                              marginTop:
+                                "3px",
+
+                              fontSize:
+                                "12px",
+
+                              fontWeight:
+                                400,
+
+                              opacity:
+                                0.72,
+
+                              lineHeight:
+                                1.5,
+                            }}
+                          >
+
+                            Payment date{" "}
+
+                            {paymentDate
+                              ? `(${formatFullDate(
+                                  paymentDate
+                                )})`
+                              : ""}{" "}
+
+                            will be used as the
+                            notice-given date.
+                            Planned vacating date
+                            will be calculated
+                            automatically from the
+                            tenant&apos;s rent cycle.
+
+                          </span>
+
+                        </span>
+
+                      </label>
+                    ) : tenantAlreadyInNotice ? (
+                      <div
+                        style={{
+                          padding:
+                            "11px 12px",
+
+                          border:
+                            "1px solid rgba(148, 163, 184, 0.22)",
+
+                          borderRadius:
+                            "8px",
+                        }}
+                      >
+
+                        <strong
+                          style={{
+                            display:
+                              "block",
+
+                            fontSize:
+                              "13px",
+                          }}
+                        >
+                          Tenant is already in Notice Period
+                        </strong>
+
+
+                        <span
+                          style={{
+                            display:
+                              "block",
+
+                            marginTop:
+                              "3px",
+
+                            fontSize:
+                              "12px",
+
+                            opacity:
+                              0.72,
+
+                            lineHeight:
+                              1.5,
+                          }}
+                        >
+                          This payment will be
+                          recorded normally and
+                          will not start a new
+                          notice period.
+                        </span>
+
+                      </div>
+                    ) : null}
+
+                  </div>
+                ) : null}
+
+
                 <p className="rent-payment-helper">
-                  The backend prevents
-                  overpayment and updates
-                  the rent bill
-                  transactionally.
+
+                  {isMultiBillPayment
+                    ? "This tenant has multiple outstanding bills. Adjust how the payment should be distributed between them."
+                    : "The backend prevents overpayment and updates the rent bill transactionally."}
+
                 </p>
 
               </div>
@@ -2346,12 +3974,16 @@ export default function RentPage() {
                   className="rent-payment-submit-button"
                   disabled={
                     paymentSubmitting ||
-                    !selectedBill
+                    !selectedPaymentTarget
                   }
                 >
+
                   {paymentSubmitting
                     ? "Recording..."
+                    : markNoticePeriod
+                    ? "Record payment & start notice"
                     : "Record payment"}
+
                 </button>
 
               </div>

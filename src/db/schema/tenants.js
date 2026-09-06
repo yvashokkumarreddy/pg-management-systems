@@ -6,19 +6,23 @@ import {
   decimal,
   pgEnum,
   index,
+  integer,
 } from "drizzle-orm/pg-core";
 
 import { users } from "./users.js";
 import { rooms } from "./rooms.js";
 
-export const tenantStatusEnum = pgEnum(
-  "tenant_status",
-  [
-    "ACTIVE",
-    "NOTICE_PERIOD",
-    "ARCHIVED",
-  ]
-);
+
+export const tenantStatusEnum =
+  pgEnum(
+    "tenant_status",
+    [
+      "ACTIVE",
+      "NOTICE_PERIOD",
+      "ARCHIVED",
+    ]
+  );
+
 
 export const tenants = pgTable(
   "tenants",
@@ -46,25 +50,32 @@ export const tenants = pgTable(
     }).notNull(),
 
     // Calendar date - no timezone conversion
-    dateOfBirth: date("date_of_birth"),
-
-    emergencyContactName: varchar(
-      "emergency_contact_name",
-      {
-        length: 150,
-      }
+    dateOfBirth: date(
+      "date_of_birth"
     ),
 
-    emergencyContactPhone: varchar(
-      "emergency_contact_phone",
+    emergencyContactName:
+      varchar(
+        "emergency_contact_name",
+        {
+          length: 150,
+        }
+      ),
+
+    emergencyContactPhone:
+      varchar(
+        "emergency_contact_phone",
+        {
+          length: 20,
+        }
+      ),
+
+    officeName: varchar(
+      "office_name",
       {
-        length: 20,
+        length: 200,
       }
     ),
-
-    officeName: varchar("office_name", {
-      length: 200,
-    }),
 
     officeAddress: varchar(
       "office_address",
@@ -80,7 +91,13 @@ export const tenants = pgTable(
       }
     ),
 
-    // Calendar date - no timezone conversion
+    /*
+     * Historical joining date.
+     *
+     * This must NOT be changed simply
+     * because the tenant changes their
+     * monthly rent/payment cycle.
+     */
     dateOfJoining: date(
       "date_of_joining"
     ).notNull(),
@@ -89,6 +106,28 @@ export const tenants = pgTable(
     dateOfLeaving: date(
       "date_of_leaving"
     ),
+    noticeGivenDate: date(
+  "notice_given_date"
+),
+
+plannedVacatingDate: date(
+  "planned_vacating_date"
+),
+
+    /*
+     * Permanent recurring rent-cycle
+     * anchor.
+     *
+     * Examples:
+     *
+     * 3  = cycle normally starts on 3rd
+     * 15 = cycle normally starts on 15th
+     * 31 = month-end clamping is applied
+     *      for shorter months.
+     */
+    rentCycleDay: integer(
+      "rent_cycle_day"
+    ).notNull(),
 
     monthlyRent: decimal(
       "monthly_rent",
@@ -98,9 +137,10 @@ export const tenants = pgTable(
       }
     ).notNull(),
 
-    status: tenantStatusEnum("status")
-      .notNull()
-      .default("ACTIVE"),
+    status:
+      tenantStatusEnum("status")
+        .notNull()
+        .default("ACTIVE"),
 
     // Actual timestamp - keep timezone
     createdAt: timestamp(
@@ -122,21 +162,32 @@ export const tenants = pgTable(
       .notNull()
       .defaultNow(),
   },
+
   (table) => ({
     ownerIdx: index(
       "tenants_owner_idx"
-    ).on(table.ownerId),
+    ).on(
+      table.ownerId
+    ),
 
     roomIdx: index(
       "tenants_room_idx"
-    ).on(table.roomId),
+    ).on(
+      table.roomId
+    ),
 
     statusIdx: index(
       "tenants_status_idx"
-    ).on(table.status),
+    ).on(
+      table.status
+    ),
+    
 
     mobileIdx: index(
       "tenants_mobile_idx"
-    ).on(table.mobile),
+    ).on(
+      table.mobile
+    ),
+    
   })
 );

@@ -11,7 +11,7 @@ export async function POST(request) {
     const body = await request.json();
     const { ownerId } =
   await getCurrentOwner();
-
+console.log("Owner ID:", ownerId);
     const validation =
       validateCreateTenant(body);
 

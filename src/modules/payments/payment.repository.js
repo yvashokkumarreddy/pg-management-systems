@@ -41,8 +41,22 @@ export async function findTenantForPayment(
 
         status:
           tenants.status,
+
+        dateOfJoining:
+          tenants.dateOfJoining,
+
+        rentCycleDay:
+          tenants.rentCycleDay,
+
+        noticeGivenDate:
+          tenants.noticeGivenDate,
+
+        plannedVacatingDate:
+          tenants.plannedVacatingDate,
       })
-      .from(tenants)
+      .from(
+        tenants
+      )
       .where(
         and(
           eq(
@@ -58,7 +72,11 @@ export async function findTenantForPayment(
       )
       .limit(1);
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -102,7 +120,9 @@ export async function findRentBillForPayment(
         status:
           rentBills.status,
       })
-      .from(rentBills)
+      .from(
+        rentBills
+      )
       .innerJoin(
         tenants,
         eq(
@@ -130,7 +150,11 @@ export async function findRentBillForPayment(
       )
       .limit(1);
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -142,15 +166,16 @@ export async function createPayment(
   dbClient,
   data
 ) {
-  /*
-   * paymentDate is expected to be
-   * YYYY-MM-DD.
-   */
   const result =
     await dbClient
-      .insert(payments)
-      .values(data)
+      .insert(
+        payments
+      )
+      .values(
+        data
+      )
       .returning();
+
 
   return result[0];
 }
@@ -167,7 +192,9 @@ export async function updateRentBillAfterPayment(
 ) {
   const result =
     await dbClient
-      .update(rentBills)
+      .update(
+        rentBills
+      )
       .set({
         amountPaid:
           data.amountPaid,
@@ -178,10 +205,6 @@ export async function updateRentBillAfterPayment(
         status:
           data.status,
 
-        /*
-         * updatedAt is an actual
-         * timestamp.
-         */
         updatedAt:
           new Date(),
       })
@@ -193,7 +216,62 @@ export async function updateRentBillAfterPayment(
       )
       .returning();
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
+}
+
+
+/* ======================================================
+   START TENANT NOTICE PERIOD
+====================================================== */
+
+export async function startTenantNoticePeriod(
+  dbClient,
+  tenantId,
+  ownerId,
+  data
+) {
+  const result =
+    await dbClient
+      .update(
+        tenants
+      )
+      .set({
+        status:
+          "NOTICE_PERIOD",
+
+        noticeGivenDate:
+          data.noticeGivenDate,
+
+        plannedVacatingDate:
+          data.plannedVacatingDate,
+
+        updatedAt:
+          new Date(),
+      })
+      .where(
+        and(
+          eq(
+            tenants.id,
+            tenantId
+          ),
+
+          eq(
+            tenants.ownerId,
+            ownerId
+          )
+        )
+      )
+      .returning();
+
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -261,7 +339,9 @@ export async function findPaymentsByOwner(
       billDueDate:
         rentBills.dueDate,
     })
-    .from(payments)
+    .from(
+      payments
+    )
     .innerJoin(
       tenants,
       eq(
@@ -375,7 +455,9 @@ export async function findPaymentById(
         billStatus:
           rentBills.status,
       })
-      .from(payments)
+      .from(
+        payments
+      )
       .innerJoin(
         tenants,
         eq(
@@ -412,7 +494,11 @@ export async function findPaymentById(
       )
       .limit(1);
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -460,7 +546,9 @@ export async function findPaymentsByTenant(
       billDueDate:
         rentBills.dueDate,
     })
-    .from(payments)
+    .from(
+      payments
+    )
     .innerJoin(
       tenants,
       eq(

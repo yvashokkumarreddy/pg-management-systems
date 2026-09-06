@@ -37,22 +37,57 @@ function formatCurrency(value) {
 }
 
 
+/*
+ * PostgreSQL business dates are returned as YYYY-MM-DD.
+ *
+ * Do not use:
+ *
+ * new Date("2026-09-03")
+ *
+ * because that is interpreted as UTC and can cause
+ * calendar-date shifts in some timezones.
+ */
+function parseDateOnly(value) {
+  if (
+    !value ||
+    typeof value !== "string"
+  ) {
+    return null;
+  }
+
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+      value
+    );
+
+  if (!match) {
+    return null;
+  }
+
+  return new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3])
+  );
+}
+
+
 function formatDate(value) {
-  if (!value) {
+  const date =
+    parseDateOnly(value);
+
+  if (!date) {
     return "—";
   }
 
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(date);
+  return new Intl.DateTimeFormat(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  ).format(date);
 }
 
 
@@ -79,6 +114,13 @@ function getTenantStatusLabel(status) {
 
 
 function getOutstandingAmount(tenant) {
+  /*
+   * Current /api/tenants endpoint already returns
+   * aggregated balanceAmount.
+   *
+   * This is the preferred value because the backend
+   * guarantees one tenant = one row.
+   */
   if (
     tenant?.balanceAmount !== undefined &&
     tenant?.balanceAmount !== null
@@ -88,6 +130,9 @@ function getOutstandingAmount(tenant) {
     );
   }
 
+  /*
+   * Backward-compatible fallback.
+   */
   if (
     tenant?.pendingAmount !== undefined &&
     tenant?.pendingAmount !== null
@@ -97,16 +142,16 @@ function getOutstandingAmount(tenant) {
     );
   }
 
+  /*
+   * Final fallback for older response shapes.
+   */
   if (Array.isArray(tenant?.rentBills)) {
     return tenant.rentBills.reduce(
-      (total, bill) => {
-        return (
-          total +
-          Number(
-            bill?.balanceAmount || 0
-          )
-        );
-      },
+      (total, bill) =>
+        total +
+        Number(
+          bill?.balanceAmount || 0
+        ),
       0
     );
   }
@@ -133,14 +178,20 @@ function AddTenantModal({
   onClose,
   onCreate,
 }) {
-  const [fullName, setFullName] =
-    useState("");
+  const [
+    fullName,
+    setFullName,
+  ] = useState("");
 
-  const [mobile, setMobile] =
-    useState("");
+  const [
+    mobile,
+    setMobile,
+  ] = useState("");
 
-  const [roomId, setRoomId] =
-    useState("");
+  const [
+    roomId,
+    setRoomId,
+  ] = useState("");
 
   const [
     dateOfJoining,
@@ -174,27 +225,33 @@ function AddTenantModal({
 
   const availableRooms =
     useMemo(() => {
-      return rooms.filter((room) => {
-        if (
-          room.status &&
-          room.status !== "ACTIVE"
-        ) {
-          return false;
-        }
+      return rooms.filter(
+        (room) => {
+          if (
+            room.status &&
+            room.status !== "ACTIVE"
+          ) {
+            return false;
+          }
 
-        if (
-          room.vacantBeds !== undefined &&
-          room.vacantBeds !== null
-        ) {
+          if (
+            room.vacantBeds !== undefined &&
+            room.vacantBeds !== null
+          ) {
+            return (
+              Number(
+                room.vacantBeds
+              ) > 0
+            );
+          }
+
           return (
-            Number(room.vacantBeds) > 0
+            Number(
+              room.capacity || 0
+            ) > 0
           );
         }
-
-        return (
-          Number(room.capacity || 0) > 0
-        );
-      });
+      );
     }, [rooms]);
 
 
@@ -229,9 +286,11 @@ function AddTenantModal({
     }
 
     await onCreate({
-      fullName: fullName.trim(),
+      fullName:
+        fullName.trim(),
 
-      mobile: mobile.trim(),
+      mobile:
+        mobile.trim(),
 
       roomId,
 
@@ -274,6 +333,7 @@ function AddTenantModal({
         {/* HEADER */}
 
         <div className="prototype-tenant-modal-header">
+
           <h2>
             Add tenant
           </h2>
@@ -287,6 +347,7 @@ function AddTenantModal({
           >
             <X size={18} />
           </button>
+
         </div>
 
 
@@ -298,6 +359,7 @@ function AddTenantModal({
 
             {error ? (
               <div className="prototype-form-error">
+
                 <AlertTriangle
                   size={16}
                 />
@@ -305,6 +367,7 @@ function AddTenantModal({
                 <span>
                   {error}
                 </span>
+
               </div>
             ) : null}
 
@@ -314,6 +377,7 @@ function AddTenantModal({
               {/* FULL NAME */}
 
               <div className="prototype-form-field">
+
                 <label htmlFor="tenant-full-name">
                   FULL NAME
                 </label>
@@ -332,12 +396,14 @@ function AddTenantModal({
                   autoComplete="name"
                   required
                 />
+
               </div>
 
 
               {/* PHONE */}
 
               <div className="prototype-form-field">
+
                 <label htmlFor="tenant-mobile">
                   PHONE
                 </label>
@@ -362,12 +428,14 @@ function AddTenantModal({
                   autoComplete="tel"
                   required
                 />
+
               </div>
 
 
               {/* ROOM */}
 
               <div className="prototype-form-field">
+
                 <label htmlFor="tenant-room">
                   ROOM
                 </label>
@@ -399,12 +467,14 @@ function AddTenantModal({
                     )
                   )}
                 </select>
+
               </div>
 
 
               {/* DATE OF JOINING */}
 
               <div className="prototype-form-field">
+
                 <label htmlFor="tenant-date-of-joining">
                   DATE OF JOINING
                 </label>
@@ -421,17 +491,20 @@ function AddTenantModal({
                   disabled={creating}
                   required
                 />
+
               </div>
 
 
               {/* MONTHLY RENT */}
 
               <div className="prototype-form-field">
+
                 <label htmlFor="tenant-monthly-rent">
                   MONTHLY RENT
                 </label>
 
                 <div className="prototype-money-field">
+
                   <span>
                     ₹
                   </span>
@@ -450,18 +523,22 @@ function AddTenantModal({
                     disabled={creating}
                     required
                   />
+
                 </div>
+
               </div>
 
 
               {/* DEPOSIT RECEIVED */}
 
               <div className="prototype-form-field">
+
                 <label htmlFor="tenant-deposit-received">
                   DEPOSIT RECEIVED
                 </label>
 
                 <div className="prototype-money-field">
+
                   <span>
                     ₹
                   </span>
@@ -479,7 +556,9 @@ function AddTenantModal({
                     }
                     disabled={creating}
                   />
+
                 </div>
+
               </div>
 
             </div>
@@ -499,6 +578,7 @@ function AddTenantModal({
                 {/* AADHAAR FRONT */}
 
                 <label className="prototype-document-upload">
+
                   <input
                     type="file"
                     accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
@@ -517,19 +597,22 @@ function AddTenantModal({
 
                   <span
                     title={
-                      aadhaarFront?.name || ""
+                      aadhaarFront?.name ||
+                      ""
                     }
                   >
                     {aadhaarFront
                       ? aadhaarFront.name
                       : "Optional during creation"}
                   </span>
+
                 </label>
 
 
                 {/* AADHAAR BACK */}
 
                 <label className="prototype-document-upload">
+
                   <input
                     type="file"
                     accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
@@ -548,13 +631,15 @@ function AddTenantModal({
 
                   <span
                     title={
-                      aadhaarBack?.name || ""
+                      aadhaarBack?.name ||
+                      ""
                     }
                   >
                     {aadhaarBack
                       ? aadhaarBack.name
                       : "Optional during creation"}
                   </span>
+
                 </label>
 
               </div>
@@ -610,24 +695,37 @@ function AddTenantModal({
 ====================================================== */
 
 export default function TenantsPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  const router =
+    useRouter();
+
+  const searchParams =
+    useSearchParams();
 
 
-  const [tenants, setTenants] =
-    useState([]);
+  const [
+    tenants,
+    setTenants,
+  ] = useState([]);
 
-  const [rooms, setRooms] =
-    useState([]);
+  const [
+    rooms,
+    setRooms,
+  ] = useState([]);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
-  const [error, setError] =
-    useState("");
+  const [
+    error,
+    setError,
+  ] = useState("");
 
-  const [search, setSearch] =
-    useState("");
+  const [
+    search,
+    setSearch,
+  ] = useState("");
 
   const [
     statusFilter,
@@ -660,65 +758,76 @@ export default function TenantsPage() {
   ==================================================== */
 
   const loadData =
-    useCallback(async () => {
-      try {
-        setLoading(true);
-        setError("");
+    useCallback(
+      async () => {
+        try {
+          setLoading(true);
+          setError("");
 
-        const [
-          tenantsResponse,
-          roomsResponse,
-        ] = await Promise.all([
-          apiRequest(
-            "/api/tenants"
-          ),
+          const [
+            tenantsResponse,
+            roomsResponse,
+          ] =
+            await Promise.all([
+              apiRequest(
+                "/api/tenants"
+              ),
 
-          apiRequest(
-            "/api/rooms"
-          ),
-        ]);
+              apiRequest(
+                "/api/rooms"
+              ),
+            ]);
 
-        const tenantList =
-          Array.isArray(
-            tenantsResponse?.data
-          )
-            ? tenantsResponse.data
-            : [];
 
-        const roomList =
-          Array.isArray(
-            roomsResponse?.data
-          )
-            ? roomsResponse.data
-            : [];
+          /*
+           * /api/tenants already returns one
+           * aggregated row per tenant.
+           *
+           * Do not regroup rent bills here.
+           */
+          const tenantList =
+            Array.isArray(
+              tenantsResponse?.data
+            )
+              ? tenantsResponse.data
+              : [];
 
-        setTenants(
-          tenantList
-        );
 
-        setRooms(
-          roomList
-        );
+          const roomList =
+            Array.isArray(
+              roomsResponse?.data
+            )
+              ? roomsResponse.data
+              : [];
 
-      } catch (err) {
-        console.error(
-          "Load tenants page error:",
-          err
-        );
 
-        setError(
-          err?.data?.message ||
-            err?.message ||
-            "Unable to load tenants."
-        );
+          setTenants(
+            tenantList
+          );
 
-        setTenants([]);
-        setRooms([]);
+          setRooms(
+            roomList
+          );
+        } catch (err) {
+          console.error(
+            "Load tenants page error:",
+            err
+          );
 
-      } finally {
-        setLoading(false);
-      }
-    }, []);
+          setError(
+            err?.data?.message ||
+              err?.message ||
+              "Unable to load tenants."
+          );
+
+          setTenants([]);
+          setRooms([]);
+        } finally {
+          setLoading(false);
+        }
+      },
+      []
+    );
 
 
   useEffect(() => {
@@ -733,7 +842,8 @@ export default function TenantsPage() {
 
   useEffect(() => {
     const shouldOpenAddTenant =
-      searchParams.get("add") === "1";
+      searchParams.get("add") ===
+      "1";
 
     if (shouldOpenAddTenant) {
       setTenantFormError("");
@@ -753,11 +863,20 @@ export default function TenantsPage() {
           .trim()
           .toLowerCase();
 
+
       return tenants.filter(
         (tenant) => {
-          let matchesStatus = true;
+          let matchesStatus =
+            true;
 
 
+          /*
+           * CURRENT means tenants who still
+           * occupy a bed.
+           *
+           * ACTIVE + NOTICE_PERIOD both count
+           * as current residents.
+           */
           if (
             statusFilter ===
             "CURRENT"
@@ -812,13 +931,15 @@ export default function TenantsPage() {
 
           const tenantName =
             String(
-              tenant.fullName || ""
+              tenant.fullName ||
+                ""
             ).toLowerCase();
 
 
           const tenantMobile =
             String(
-              tenant.mobile || ""
+              tenant.mobile ||
+                ""
             ).toLowerCase();
 
 
@@ -957,12 +1078,14 @@ export default function TenantsPage() {
     setTenantFormError("");
     setShowAddTenant(false);
 
+
     /*
      * If modal was opened from
      * Dashboard, clean the URL.
      */
     if (
-      searchParams.get("add") === "1"
+      searchParams.get("add") ===
+      "1"
     ) {
       router.replace(
         "/tenants",
@@ -996,25 +1119,26 @@ export default function TenantsPage() {
           {
             method: "POST",
 
-            body: JSON.stringify({
-              fullName:
-                values.fullName,
+            body:
+              JSON.stringify({
+                fullName:
+                  values.fullName,
 
-              mobile:
-                values.mobile,
+                mobile:
+                  values.mobile,
 
-              roomId:
-                values.roomId,
+                roomId:
+                  values.roomId,
 
-              dateOfJoining:
-                values.dateOfJoining,
+                dateOfJoining:
+                  values.dateOfJoining,
 
-              monthlyRent:
-                values.monthlyRent,
+                monthlyRent:
+                  values.monthlyRent,
 
-              advanceAmount:
-                values.depositReceived,
-            }),
+                advanceAmount:
+                  values.depositReceived,
+              }),
           }
         );
 
@@ -1024,9 +1148,7 @@ export default function TenantsPage() {
         response?.data;
 
 
-      if (
-        !createdTenant?.id
-      ) {
+      if (!createdTenant?.id) {
         throw new Error(
           "Tenant created but tenant ID was not returned."
         );
@@ -1037,7 +1159,8 @@ export default function TenantsPage() {
          STEP 2 — OPTIONAL DOCUMENTS
       ================================================ */
 
-      const documentErrors = [];
+      const documentErrors =
+        [];
 
 
       /* AADHAAR FRONT */
@@ -1069,12 +1192,16 @@ export default function TenantsPage() {
           await apiRequest(
             `/api/tenants/${createdTenant.id}/documents`,
             {
-              method: "POST",
-              body: formData,
+              method:
+                "POST",
+
+              body:
+                formData,
             }
           );
-
-        } catch (documentError) {
+        } catch (
+          documentError
+        ) {
           console.error(
             "Aadhaar Front upload error:",
             documentError
@@ -1120,12 +1247,16 @@ export default function TenantsPage() {
           await apiRequest(
             `/api/tenants/${createdTenant.id}/documents`,
             {
-              method: "POST",
-              body: formData,
+              method:
+                "POST",
+
+              body:
+                formData,
             }
           );
-
-        } catch (documentError) {
+        } catch (
+          documentError
+        ) {
           console.error(
             "Aadhaar Back upload error:",
             documentError
@@ -1153,11 +1284,12 @@ export default function TenantsPage() {
 
 
       /*
-       * Remove ?add=1 after
-       * successful creation.
+       * Remove ?add=1 after successful
+       * creation.
        */
       if (
-        searchParams.get("add") === "1"
+        searchParams.get("add") ===
+        "1"
       ) {
         router.replace(
           "/tenants",
@@ -1169,11 +1301,12 @@ export default function TenantsPage() {
 
 
       /*
-       * Tenant is already created even
-       * if optional documents fail.
+       * Tenant already exists even when an
+       * optional document upload fails.
        */
       if (
-        documentErrors.length > 0
+        documentErrors.length >
+        0
       ) {
         setError(
           `Tenant created successfully, but ${documentErrors.join(
@@ -1181,7 +1314,6 @@ export default function TenantsPage() {
           )}`
         );
       }
-
     } catch (err) {
       console.error(
         "Create tenant error:",
@@ -1193,9 +1325,10 @@ export default function TenantsPage() {
           err?.message ||
           "Unable to create tenant."
       );
-
     } finally {
-      setCreatingTenant(false);
+      setCreatingTenant(
+        false
+      );
     }
   }
 
@@ -1345,6 +1478,7 @@ export default function TenantsPage() {
           <table className="tenants-table">
 
             <thead>
+
               <tr>
 
                 <th>
@@ -1384,75 +1518,100 @@ export default function TenantsPage() {
                 />
 
               </tr>
+
             </thead>
 
 
             <tbody>
 
               {/* LOADING */}
-{/* LOADING */}
 
-{loading
-  ? Array.from({
-      length: 5,
-    }).map((_, rowIndex) => (
-      <tr
-        key={`tenant-loading-${rowIndex}`}
-        className="tenants-skeleton-row"
-      >
-        {/* ROOM */}
-        <td>
-          <div className="tenants-skeleton tenants-skeleton-room" />
-        </td>
+              {loading
+                ? Array.from({
+                    length: 5,
+                  }).map(
+                    (
+                      _,
+                      rowIndex
+                    ) => (
+                      <tr
+                        key={`tenant-loading-${rowIndex}`}
+                        className="tenants-skeleton-row"
+                      >
 
-        {/* TENANT */}
-        <td>
-          <div className="tenants-skeleton tenants-skeleton-name" />
-        </td>
+                        {/* ROOM */}
 
-        {/* PHONE */}
-        <td>
-          <div className="tenants-skeleton tenants-skeleton-phone" />
-        </td>
+                        <td>
+                          <div className="tenants-skeleton tenants-skeleton-room" />
+                        </td>
 
-        {/* JOINED */}
-        <td>
-          <div className="tenants-skeleton tenants-skeleton-date" />
-        </td>
 
-        {/* MONTHLY RENT */}
-        <td>
-          <div className="tenants-skeleton tenants-skeleton-money" />
-        </td>
+                        {/* TENANT */}
 
-        {/* OUTSTANDING */}
-        <td>
-          <div className="tenants-skeleton tenants-skeleton-money" />
-        </td>
+                        <td>
+                          <div className="tenants-skeleton tenants-skeleton-name" />
+                        </td>
 
-        {/* DUE DATE */}
-        <td>
-          <div className="tenants-skeleton tenants-skeleton-date" />
-        </td>
 
-        {/* STATUS */}
-        <td>
-          <div className="tenants-skeleton tenants-skeleton-status" />
-        </td>
+                        {/* PHONE */}
 
-        {/* ACTION */}
-        <td className="tenant-table-action-cell">
-          <div className="tenants-skeleton tenants-skeleton-action" />
-        </td>
-      </tr>
-    ))
-  : null}
+                        <td>
+                          <div className="tenants-skeleton tenants-skeleton-phone" />
+                        </td>
+
+
+                        {/* JOINED */}
+
+                        <td>
+                          <div className="tenants-skeleton tenants-skeleton-date" />
+                        </td>
+
+
+                        {/* MONTHLY RENT */}
+
+                        <td>
+                          <div className="tenants-skeleton tenants-skeleton-money" />
+                        </td>
+
+
+                        {/* OUTSTANDING */}
+
+                        <td>
+                          <div className="tenants-skeleton tenants-skeleton-money" />
+                        </td>
+
+
+                        {/* DUE DATE */}
+
+                        <td>
+                          <div className="tenants-skeleton tenants-skeleton-date" />
+                        </td>
+
+
+                        {/* STATUS */}
+
+                        <td>
+                          <div className="tenants-skeleton tenants-skeleton-status" />
+                        </td>
+
+
+                        {/* ACTION */}
+
+                        <td className="tenant-table-action-cell">
+                          <div className="tenants-skeleton tenants-skeleton-action" />
+                        </td>
+
+                      </tr>
+                    )
+                  )
+                : null}
 
 
               {/* TENANTS */}
 
               {!loading &&
-              paginatedTenants.length > 0
+              paginatedTenants.length >
+                0
                 ? paginatedTenants.map(
                     (tenant) => {
                       const outstanding =
@@ -1463,23 +1622,30 @@ export default function TenantsPage() {
 
                       return (
                         <tr
-                          key={tenant.id}
+                          key={
+                            tenant.id
+                          }
                         >
 
                           {/* ROOM */}
 
                           <td>
+
                             <span className="tenant-room-number">
+
                               {getTenantRoomNumber(
                                 tenant
                               )}
+
                             </span>
+
                           </td>
 
 
                           {/* TENANT */}
 
                           <td>
+
                             <div className="tenant-table-name">
 
                               <strong>
@@ -1488,6 +1654,7 @@ export default function TenantsPage() {
                               </strong>
 
                             </div>
+
                           </td>
 
 
@@ -1511,28 +1678,37 @@ export default function TenantsPage() {
                           {/* MONTHLY RENT */}
 
                           <td>
+
                             <strong className="tenant-table-money">
+
                               {formatCurrency(
                                 tenant.monthlyRent
                               )}
+
                             </strong>
+
                           </td>
 
 
                           {/* OUTSTANDING */}
 
                           <td>
+
                             <strong
                               className={
-                                outstanding > 0
+                                outstanding >
+                                0
                                   ? "tenant-table-money tenant-outstanding-due"
                                   : "tenant-table-money"
                               }
                             >
+
                               {formatCurrency(
                                 outstanding
                               )}
+
                             </strong>
+
                           </td>
 
 
@@ -1555,9 +1731,11 @@ export default function TenantsPage() {
                                   "ACTIVE"
                               ).toLowerCase()}`}
                             >
+
                               {getTenantStatusLabel(
                                 tenant.status
                               )}
+
                             </span>
 
                           </td>
@@ -1590,35 +1768,47 @@ export default function TenantsPage() {
 
               {/* EMPTY */}
 
-{!loading &&
-visibleTenants.length === 0 ? (
-  <tr>
-    <td
-      colSpan={9}
-      className="tenants-empty-cell"
-    >
-      <div className="tenants-empty">
-        <strong>
-          {search
-            ? "No matching tenants"
-            : statusFilter ===
-                "ARCHIVED"
-              ? "No archived tenants found"
-              : "No tenants found"}
-        </strong>
+              {!loading &&
+              visibleTenants.length ===
+                0 ? (
+                <tr>
 
-        <p>
-          {search
-            ? "Try searching by another name, phone number or room."
-            : statusFilter ===
-                "ARCHIVED"
-              ? "Archived tenants will appear here."
-              : "Add a tenant to start managing residents."}
-        </p>
-      </div>
-    </td>
-  </tr>
-) : null}
+                  <td
+                    colSpan={9}
+                    className="tenants-empty-cell"
+                  >
+
+                    <div className="tenants-empty">
+
+                      <strong>
+
+                        {search
+                          ? "No matching tenants"
+                          : statusFilter ===
+                              "ARCHIVED"
+                            ? "No archived tenants found"
+                            : "No tenants found"}
+
+                      </strong>
+
+
+                      <p>
+
+                        {search
+                          ? "Try searching by another name, phone number or room."
+                          : statusFilter ===
+                              "ARCHIVED"
+                            ? "Archived tenants will appear here."
+                            : "Add a tenant to start managing residents."}
+
+                      </p>
+
+                    </div>
+
+                  </td>
+
+                </tr>
+              ) : null}
 
             </tbody>
 
@@ -1632,7 +1822,8 @@ visibleTenants.length === 0 ? (
         ================================================== */}
 
         {!loading &&
-        visibleTenants.length > 0 ? (
+        visibleTenants.length >
+          0 ? (
           <div className="tenants-pagination">
 
             <div className="tenants-pagination-info">
@@ -1669,13 +1860,15 @@ visibleTenants.length === 0 ? (
                   type="button"
                   className="tenants-pagination-nav"
                   disabled={
-                    safeCurrentPage === 1
+                    safeCurrentPage ===
+                    1
                   }
                   onClick={() =>
                     setCurrentPage(
                       Math.max(
                         1,
-                        safeCurrentPage - 1
+                        safeCurrentPage -
+                          1
                       )
                     )
                   }
@@ -1708,7 +1901,9 @@ visibleTenants.length === 0 ? (
 
                       return (
                         <div
-                          key={page}
+                          key={
+                            page
+                          }
                           className="tenants-pagination-page-item"
                         >
 
@@ -1763,7 +1958,8 @@ visibleTenants.length === 0 ? (
                     setCurrentPage(
                       Math.min(
                         totalPages,
-                        safeCurrentPage + 1
+                        safeCurrentPage +
+                          1
                       )
                     )
                   }

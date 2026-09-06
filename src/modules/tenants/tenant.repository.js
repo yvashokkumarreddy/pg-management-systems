@@ -7,6 +7,7 @@ import {
   asc,
   lte,
   gte,
+  sql,
 } from "drizzle-orm";
 
 import {
@@ -26,70 +27,159 @@ export async function findTenantsByOwner(
   dbClient,
   ownerId
 ) {
-  return await dbClient
-    .select({
-      id:
+  /*
+   * IMPORTANT:
+   *
+   * rentBills is a one-to-many relationship.
+   *
+   * A normal LEFT JOIN without aggregation would return:
+   *
+   * Tenant A + Bill 1
+   * Tenant A + Bill 2
+   * Tenant A + Bill 3
+   *
+   * which causes duplicate tenant rows in the Tenants page.
+   *
+   * We therefore GROUP BY the tenant/room fields and aggregate
+   * bill-level financial information.
+   *
+   * Result:
+   *
+   * ONE database row per tenant.
+   */
+
+
+  const result =
+    await dbClient
+      .select({
+        id:
+          tenants.id,
+
+        fullName:
+          tenants.fullName,
+
+        mobile:
+          tenants.mobile,
+
+        dateOfJoining:
+          tenants.dateOfJoining,
+
+        dateOfLeaving:
+          tenants.dateOfLeaving,
+
+        rentCycleDay:
+          tenants.rentCycleDay,
+
+        monthlyRent:
+          tenants.monthlyRent,
+
+        status:
+          tenants.status,
+
+        roomId:
+          rooms.id,
+
+        roomNumber:
+          rooms.roomNumber,
+
+        floor:
+          rooms.floor,
+
+
+        /*
+         * TOTAL OUTSTANDING
+         *
+         * Example:
+         *
+         * Normal bill      ₹4,500
+         * Transition bill    ₹500
+         *
+         * balanceAmount = ₹5,000
+         *
+         * COALESCE makes tenants with no rent bills return 0.
+         */
+        balanceAmount:
+          sql`COALESCE(SUM(${rentBills.balanceAmount}), 0)`,
+
+
+        /*
+         * DUE DATE
+         *
+         * We only care about bills that still have an
+         * outstanding balance.
+         *
+         * If there are multiple outstanding bills, show
+         * the earliest due date because that is the most
+         * urgent outstanding obligation.
+         *
+         * Fully paid bills are ignored.
+         */
+        dueDate:
+          sql`
+            COALESCE(
+              MIN(
+                CASE
+                  WHEN ${rentBills.balanceAmount} > 0
+                  THEN ${rentBills.dueDate}
+                  ELSE NULL
+                END
+              ),
+              MAX(${rentBills.dueDate})
+            )
+          `,
+      })
+      .from(
+        tenants
+      )
+      .leftJoin(
+        rooms,
+        eq(
+          tenants.roomId,
+          rooms.id
+        )
+      )
+      .leftJoin(
+        rentBills,
+        eq(
+          rentBills.tenantId,
+          tenants.id
+        )
+      )
+      .where(
+        eq(
+          tenants.ownerId,
+          ownerId
+        )
+      )
+      .groupBy(
         tenants.id,
-
-      fullName:
         tenants.fullName,
-
-      mobile:
         tenants.mobile,
-
-      dueDate:
-        rentBills.dueDate,
-
-      dateOfJoining:
         tenants.dateOfJoining,
-
-      dateOfLeaving:
         tenants.dateOfLeaving,
-
-      monthlyRent:
+        tenants.rentCycleDay,
         tenants.monthlyRent,
-
-      status:
         tenants.status,
-
-      balanceAmount:
-        rentBills.balanceAmount,
-
-      roomId:
         rooms.id,
-
-      roomNumber:
         rooms.roomNumber,
+        rooms.floor
+      )
+      .orderBy(
+        asc(
+          rooms.roomNumber
+        )
+      );
 
-      floor:
-        rooms.floor,
-    })
-    .from(tenants)
-    .leftJoin(
-      rooms,
-      eq(
-        tenants.roomId,
-        rooms.id
-      )
-    )
-    .leftJoin(
-      rentBills,
-      eq(
-        rentBills.tenantId,
-        tenants.id
-      )
-    )
-    .where(
-      eq(
-        tenants.ownerId,
-        ownerId
-      )
-    )
-    .orderBy(
-      asc(
-        rooms.roomNumber
-      )
-    );
+
+  /*
+   * PostgreSQL SUM(decimal/numeric) may be returned by
+   * the driver as a string.
+   *
+   * The frontend already safely converts balanceAmount
+   * with Number(), so preserving the numeric-string form
+   * is perfectly valid.
+   */
+  return result;
 }
 
 
@@ -104,7 +194,9 @@ export async function findRoomById(
   const result =
     await dbClient
       .select()
-      .from(rooms)
+      .from(
+        rooms
+      )
       .where(
         eq(
           rooms.id,
@@ -113,7 +205,11 @@ export async function findRoomById(
       )
       .limit(1);
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -125,16 +221,16 @@ export async function createTenant(
   dbClient,
   data
 ) {
-  /*
-   * dateOfJoining/dateOfBirth/etc.
-   * are expected to already be
-   * YYYY-MM-DD strings.
-   */
   const result =
     await dbClient
-      .insert(tenants)
-      .values(data)
+      .insert(
+        tenants
+      )
+      .values(
+        data
+      )
       .returning();
+
 
   return result[0];
 }
@@ -148,18 +244,56 @@ export async function createRentBill(
   dbClient,
   data
 ) {
-  /*
-   * billingPeriodStart,
-   * billingPeriodEnd and dueDate
-   * are YYYY-MM-DD strings.
-   */
   const result =
     await dbClient
-      .insert(rentBills)
-      .values(data)
+      .insert(
+        rentBills
+      )
+      .values(
+        data
+      )
       .returning();
 
+
   return result[0];
+}
+
+
+/* ======================================================
+   FIND RENT BILL BY TENANT + START
+====================================================== */
+
+export async function findRentBillByTenantAndStart(
+  dbClient,
+  tenantId,
+  billingPeriodStart
+) {
+  const result =
+    await dbClient
+      .select()
+      .from(
+        rentBills
+      )
+      .where(
+        and(
+          eq(
+            rentBills.tenantId,
+            tenantId
+          ),
+
+          eq(
+            rentBills.billingPeriodStart,
+            billingPeriodStart
+          )
+        )
+      )
+      .limit(1);
+
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -172,29 +306,21 @@ export async function findCurrentRentBill(
   tenantId,
   currentDate
 ) {
-  if (!currentDate) {
+  if (
+    !currentDate
+  ) {
     throw new Error(
       "Current date is required"
     );
   }
 
-  /*
-   * currentDate is expected to be:
-   *
-   * YYYY-MM-DD
-   *
-   * Example:
-   * 2026-09-01
-   *
-   * rentBills.billingPeriodStart and
-   * billingPeriodEnd are PostgreSQL DATE
-   * columns, so all comparisons remain
-   * date-only.
-   */
+
   const result =
     await dbClient
       .select()
-      .from(rentBills)
+      .from(
+        rentBills
+      )
       .where(
         and(
           eq(
@@ -220,7 +346,11 @@ export async function findCurrentRentBill(
       )
       .limit(1);
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -235,14 +365,12 @@ export async function updateRentBill(
 ) {
   const result =
     await dbClient
-      .update(rentBills)
+      .update(
+        rentBills
+      )
       .set({
         ...data,
 
-        /*
-         * updatedAt is an actual
-         * timestamp, so Date is correct.
-         */
         updatedAt:
           new Date(),
       })
@@ -254,7 +382,11 @@ export async function updateRentBill(
       )
       .returning();
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -271,8 +403,11 @@ export async function createTenantDeposit(
       .insert(
         tenantDeposits
       )
-      .values(data)
+      .values(
+        data
+      )
       .returning();
+
 
   return result[0];
 }
@@ -290,7 +425,9 @@ export async function findTenantById(
   const result =
     await dbClient
       .select()
-      .from(tenants)
+      .from(
+        tenants
+      )
       .where(
         and(
           eq(
@@ -306,7 +443,11 @@ export async function findTenantById(
       )
       .limit(1);
 
-  return result[0] ?? null;
+
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -322,7 +463,9 @@ export async function findTenantDetailsById(
   const tenantResult =
     await dbClient
       .select()
-      .from(tenants)
+      .from(
+        tenants
+      )
       .where(
         and(
           eq(
@@ -343,7 +486,9 @@ export async function findTenantDetailsById(
     tenantResult[0];
 
 
-  if (!tenant) {
+  if (
+    !tenant
+  ) {
     return null;
   }
 
@@ -352,7 +497,9 @@ export async function findTenantDetailsById(
     tenant.roomId
       ? await dbClient
           .select()
-          .from(rooms)
+          .from(
+            rooms
+          )
           .where(
             eq(
               rooms.id,
@@ -381,7 +528,9 @@ export async function findTenantDetailsById(
   const bills =
     await dbClient
       .select()
-      .from(rentBills)
+      .from(
+        rentBills
+      )
       .where(
         eq(
           rentBills.tenantId,
@@ -398,7 +547,9 @@ export async function findTenantDetailsById(
   const tenantPayments =
     await dbClient
       .select()
-      .from(payments)
+      .from(
+        payments
+      )
       .where(
         eq(
           payments.tenantId,
@@ -446,7 +597,9 @@ export async function countOccupiedBedsByRoom(
         count:
           count(),
       })
-      .from(tenants)
+      .from(
+        tenants
+      )
       .where(
         and(
           eq(
@@ -484,14 +637,12 @@ export async function updateTenant(
 ) {
   const result =
     await dbClient
-      .update(tenants)
+      .update(
+        tenants
+      )
       .set({
         ...data,
 
-        /*
-         * updatedAt remains a real
-         * timestamp.
-         */
         updatedAt:
           new Date(),
       })
@@ -511,7 +662,10 @@ export async function updateTenant(
       .returning();
 
 
-  return result[0] ?? null;
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -532,10 +686,6 @@ export async function updateTenantDeposit(
       .set({
         ...data,
 
-        /*
-         * updatedAt remains a real
-         * timestamp.
-         */
         updatedAt:
           new Date(),
       })
@@ -548,7 +698,10 @@ export async function updateTenantDeposit(
       .returning();
 
 
-  return result[0] ?? null;
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -562,13 +715,11 @@ export async function archiveTenant(
   ownerId,
   leavingDate
 ) {
-  /*
-   * leavingDate is expected to be
-   * YYYY-MM-DD.
-   */
   const result =
     await dbClient
-      .update(tenants)
+      .update(
+        tenants
+      )
       .set({
         status:
           "ARCHIVED",
@@ -576,10 +727,6 @@ export async function archiveTenant(
         dateOfLeaving:
           leavingDate,
 
-        /*
-         * updatedAt remains a real
-         * timestamp.
-         */
         updatedAt:
           new Date(),
       })
@@ -599,7 +746,10 @@ export async function archiveTenant(
       .returning();
 
 
-  return result[0] ?? null;
+  return (
+    result[0] ??
+    null
+  );
 }
 
 
@@ -614,7 +764,9 @@ export async function restoreTenant(
 ) {
   const result =
     await dbClient
-      .update(tenants)
+      .update(
+        tenants
+      )
       .set({
         status:
           "ACTIVE",
@@ -622,10 +774,6 @@ export async function restoreTenant(
         dateOfLeaving:
           null,
 
-        /*
-         * updatedAt remains a real
-         * timestamp.
-         */
         updatedAt:
           new Date(),
       })
@@ -645,5 +793,8 @@ export async function restoreTenant(
       .returning();
 
 
-  return result[0] ?? null;
+  return (
+    result[0] ??
+    null
+  );
 }

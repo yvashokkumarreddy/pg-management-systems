@@ -70,19 +70,43 @@ function formatCompactCurrency(value) {
 }
 
 
-function formatDate(value) {
+/*
+ * PostgreSQL business dates are stored as DATE.
+ * Parse YYYY-MM-DD without converting through UTC.
+ */
+function parseDateOnly(value) {
   if (!value) {
-    return "—";
+    return null;
   }
 
-  const date =
-    new Date(value);
+  const dateValue =
+    String(value).slice(
+      0,
+      10
+    );
 
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})$/.exec(
+      dateValue
+    );
+
+  if (!match) {
+    return null;
+  }
+
+  return new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3])
+  );
+}
+
+
+function formatDate(value) {
+  const date =
+    parseDateOnly(value);
+
+  if (!date) {
     return "—";
   }
 
@@ -106,6 +130,37 @@ function formatDateInput(value) {
     0,
     10
   );
+}
+
+
+/*
+ * Business date for rent/payment/notice
+ * must follow Asia/Kolkata.
+ */
+function getTodayDateString() {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }
+    ).formatToParts(
+      new Date()
+    );
+
+  const values =
+    Object.fromEntries(
+      parts.map((part) => [
+        part.type,
+        part.value,
+      ])
+    );
+
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 
@@ -290,7 +345,19 @@ function isPdfDocument(
 
 function TenantOverview({
   tenant,
+  noticeSaving,
+  onGiveNotice,
+  onCancelNotice,
 }) {
+  const isActive =
+    tenant.status ===
+    "ACTIVE";
+
+  const isNoticePeriod =
+    tenant.status ===
+    "NOTICE_PERIOD";
+
+
   return (
     <div>
 
@@ -391,7 +458,83 @@ function TenantOverview({
           </strong>
         </div>
 
+
+        {isNoticePeriod ? (
+          <>
+
+            <div>
+              <span>
+                Notice given
+              </span>
+
+              <strong>
+                {formatDate(
+                  tenant.noticeGivenDate
+                )}
+              </strong>
+            </div>
+
+
+            <div>
+              <span>
+                Planned vacating
+              </span>
+
+              <strong>
+                {formatDate(
+                  tenant.plannedVacatingDate
+                )}
+              </strong>
+            </div>
+
+          </>
+        ) : null}
+
       </div>
+
+
+      {isActive ? (
+        <div className="tenant-edit-actions">
+
+          <button
+            type="button"
+            className="tenant-secondary-button"
+            onClick={
+              onGiveNotice
+            }
+            disabled={
+              noticeSaving
+            }
+          >
+            {noticeSaving
+              ? "Starting notice..."
+              : "Start notice period"}
+          </button>
+
+        </div>
+      ) : null}
+
+
+      {isNoticePeriod ? (
+        <div className="tenant-edit-actions">
+
+          <button
+            type="button"
+            className="tenant-secondary-button"
+            onClick={
+              onCancelNotice
+            }
+            disabled={
+              noticeSaving
+            }
+          >
+            {noticeSaving
+              ? "Cancelling..."
+              : "Cancel notice period"}
+          </button>
+
+        </div>
+      ) : null}
 
     </div>
   );
@@ -819,9 +962,7 @@ function RentBillsTab({
                       </strong>
 
                       <p>
-                        Generated from
-                        the tenant
-                        joining-day rent
+                        Tenant rent
                         cycle.
                       </p>
 
@@ -1019,6 +1160,9 @@ function RentBillsTab({
           tenantId={
             tenant.id
           }
+          tenantStatus={
+            tenant.status
+          }
           bill={
             selectedBill
           }
@@ -1053,6 +1197,7 @@ function RentBillsTab({
 
 function RecordPaymentModal({
   tenantId,
+  tenantStatus,
   bill,
   onClose,
   onSaved,
@@ -1076,10 +1221,13 @@ function RecordPaymentModal({
     paymentDate,
     setPaymentDate,
   ] = useState(
-    new Date()
-      .toISOString()
-      .slice(0, 10)
+    getTodayDateString()
   );
+
+  const [
+    markNoticePeriod,
+    setMarkNoticePeriod,
+  ] = useState(false);
 
   const [
     saving,
@@ -1092,10 +1240,34 @@ function RecordPaymentModal({
   ] = useState("");
 
 
+  const tenantAlreadyInNotice =
+    tenantStatus ===
+    "NOTICE_PERIOD";
+
+
+  const tenantCanStartNotice =
+    tenantStatus ===
+    "ACTIVE";
+
+
   async function handleSubmit(
     event
   ) {
     event.preventDefault();
+
+
+    if (
+      markNoticePeriod &&
+      !tenantCanStartNotice
+    ) {
+      setError(
+        tenantAlreadyInNotice
+          ? "Tenant is already in notice period."
+          : "Only an active tenant can be marked as notice period."
+      );
+
+      return;
+    }
 
 
     try {
@@ -1127,6 +1299,10 @@ function RecordPaymentModal({
                   paymentMode,
 
                 paymentDate,
+
+                markNoticePeriod:
+                  markNoticePeriod ===
+                  true,
               }),
           }
         );
@@ -1289,16 +1465,11 @@ function RecordPaymentModal({
                   value={
                     paymentDate
                   }
-                  onChange={(event) =>{
-                    console.log(
-                      "Payment date changed:",
-                      event.target.value
-                    )
+                  onChange={(event) =>
                     setPaymentDate(
                       event.target
                         .value
                     )
-                  }
                   }
                   required
                 />
@@ -1306,6 +1477,96 @@ function RecordPaymentModal({
               </div>
 
             </div>
+
+
+            {tenantCanStartNotice ? (
+              <div
+                style={{
+                  marginTop:
+                    "18px",
+                }}
+              >
+
+                <label
+                  style={{
+                    display:
+                      "flex",
+                    alignItems:
+                      "flex-start",
+                    gap:
+                      "10px",
+                    cursor:
+                      saving
+                        ? "default"
+                        : "pointer",
+                  }}
+                >
+
+                  <input
+                    type="checkbox"
+                    checked={
+                      markNoticePeriod
+                    }
+                    onChange={(event) =>
+                      setMarkNoticePeriod(
+                        event.target
+                          .checked
+                      )
+                    }
+                    disabled={
+                      saving
+                    }
+                    style={{
+                      marginTop:
+                        "3px",
+                    }}
+                  />
+
+
+                  <span>
+
+                    <strong>
+                      Mark tenant as Notice Period
+                    </strong>
+
+                    <span
+                      style={{
+                        display:
+                          "block",
+                        marginTop:
+                          "4px",
+                        fontSize:
+                          "13px",
+                        opacity:
+                          0.72,
+                      }}
+                    >
+                      Payment date will be used as the notice-given date.
+                      Planned vacating date is calculated automatically.
+                    </span>
+
+                  </span>
+
+                </label>
+
+              </div>
+            ) : null}
+
+
+            {tenantAlreadyInNotice ? (
+              <div
+                style={{
+                  marginTop:
+                    "18px",
+                  fontSize:
+                    "13px",
+                  opacity:
+                    0.72,
+                }}
+              >
+                Tenant is already in notice period.
+              </div>
+            ) : null}
 
           </div>
 
@@ -1339,7 +1600,9 @@ function RecordPaymentModal({
             >
               {saving
                 ? "Recording..."
-                : "Record payment"}
+                : markNoticePeriod
+                  ? "Record payment & start notice"
+                  : "Record payment"}
             </button>
 
           </div>
@@ -2655,6 +2918,11 @@ export default function TenantDetailPage() {
     setActivating,
   ] = useState(false);
 
+  const [
+    noticeSaving,
+    setNoticeSaving,
+  ] = useState(false);
+
 
   /* ====================================================
      LOAD TENANT
@@ -3003,6 +3271,147 @@ export default function TenantDetailPage() {
     } finally {
 
       setActivating(
+        false
+      );
+    }
+  }
+
+
+  /* ====================================================
+     START NOTICE PERIOD
+  ==================================================== */
+
+  async function handleGiveNotice() {
+    if (
+      tenant.status !==
+      "ACTIVE"
+    ) {
+      return;
+    }
+
+
+    const noticeGivenDate =
+      window.prompt(
+        "Notice given date (YYYY-MM-DD)",
+        getTodayDateString()
+      );
+
+
+    if (!noticeGivenDate) {
+      return;
+    }
+
+
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(
+        noticeGivenDate
+      )
+    ) {
+      setError(
+        "Enter notice date in YYYY-MM-DD format."
+      );
+
+      return;
+    }
+
+
+    try {
+
+      setNoticeSaving(
+        true
+      );
+
+      setError("");
+
+
+      await apiRequest(
+        `/api/tenants/${tenantId}/notice`,
+        {
+          method:
+            "POST",
+
+          body:
+            JSON.stringify({
+              noticeGivenDate,
+            }),
+        }
+      );
+
+
+      await loadTenant();
+
+    } catch (err) {
+
+      setError(
+        err?.data?.message ||
+          err?.message ||
+          "Unable to start notice period."
+      );
+
+    } finally {
+
+      setNoticeSaving(
+        false
+      );
+    }
+  }
+
+
+  /* ====================================================
+     CANCEL NOTICE PERIOD
+  ==================================================== */
+
+  async function handleCancelNotice() {
+    if (
+      tenant.status !==
+      "NOTICE_PERIOD"
+    ) {
+      return;
+    }
+
+
+    const confirmed =
+      window.confirm(
+        `Cancel notice period for ${tenant.fullName}?`
+      );
+
+
+    if (!confirmed) {
+      return;
+    }
+
+
+    try {
+
+      setNoticeSaving(
+        true
+      );
+
+      setError("");
+
+
+      await apiRequest(
+        `/api/tenants/${tenantId}/notice`,
+        {
+          method:
+            "DELETE",
+        }
+      );
+
+
+      await loadTenant();
+
+    } catch (err) {
+
+      setError(
+        err?.data?.message ||
+          err?.message ||
+          "Unable to cancel notice period."
+      );
+
+    } finally {
+
+      setNoticeSaving(
         false
       );
     }
@@ -3474,6 +3883,15 @@ export default function TenantDetailPage() {
             ) : (
               <TenantOverview
                 tenant={tenant}
+                noticeSaving={
+                  noticeSaving
+                }
+                onGiveNotice={
+                  handleGiveNotice
+                }
+                onCancelNotice={
+                  handleCancelNotice
+                }
               />
             )
           ) : null}
@@ -3483,56 +3901,26 @@ export default function TenantDetailPage() {
           "RENT_BILLS" ? (
             <RentBillsTab
               tenant={tenant}
-              onPaymentRecorded={(
-                result
-              ) => {
+              onPaymentRecorded={async () => {
 
-                const newPayment =
-                  result?.payment;
+                /*
+                 * Reload full tenant because payment
+                 * may also start NOTICE_PERIOD.
+                 */
+                try {
 
+                  setError("");
 
-                const updatedBill =
-                  result?.rentBill;
+                  await loadTenant();
 
+                } catch (err) {
 
-                if (
-                  !newPayment ||
-                  !updatedBill
-                ) {
-                  return;
+                  setError(
+                    err?.data?.message ||
+                      err?.message ||
+                      "Payment recorded, but tenant details could not be refreshed."
+                  );
                 }
-
-
-                setTenant(
-                  (current) => ({
-                    ...current,
-
-                    rentBills:
-                      (
-                        current
-                          ?.rentBills ||
-                        []
-                      ).map(
-                        (bill) =>
-                          bill.id ===
-                          updatedBill.id
-                            ? {
-                                ...bill,
-                                ...updatedBill,
-                              }
-                            : bill
-                      ),
-
-                    payments: [
-                      newPayment,
-                      ...(
-                        current
-                          ?.payments ||
-                        []
-                      ),
-                    ],
-                  })
-                );
               }}
             />
           ) : null}

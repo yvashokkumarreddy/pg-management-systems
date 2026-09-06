@@ -1,9 +1,11 @@
 function parseDateString(
   dateString,
-  errorMessage = "Invalid date"
+  errorMessage =
+    "Invalid date"
 ) {
   if (
-    typeof dateString !== "string" ||
+    typeof dateString !==
+      "string" ||
     !/^\d{4}-\d{2}-\d{2}$/.test(
       dateString
     )
@@ -13,6 +15,7 @@ function parseDateString(
     );
   }
 
+
   const [
     year,
     month,
@@ -20,6 +23,7 @@ function parseDateString(
   ] = dateString
     .split("-")
     .map(Number);
+
 
   if (
     month < 1 ||
@@ -31,12 +35,14 @@ function parseDateString(
     );
   }
 
+
   const daysInMonth =
     new Date(
       year,
       month,
       0
     ).getDate();
+
 
   if (
     day >
@@ -46,6 +52,7 @@ function parseDateString(
       errorMessage
     );
   }
+
 
   return {
     year,
@@ -77,10 +84,12 @@ function formatDate({
       4,
       "0"
     ),
+
     String(month).padStart(
       2,
       "0"
     ),
+
     String(day).padStart(
       2,
       "0"
@@ -93,17 +102,22 @@ function getNextMonth({
   year,
   month,
 }) {
-  if (month === 12) {
+  if (
+    month === 12
+  ) {
     return {
       year:
         year + 1,
+
       month:
         1,
     };
   }
 
+
   return {
     year,
+
     month:
       month + 1,
   };
@@ -115,14 +129,18 @@ function getPreviousDay({
   month,
   day,
 }) {
-  if (day > 1) {
+  if (
+    day > 1
+  ) {
     return {
       year,
       month,
+
       day:
         day - 1,
     };
   }
+
 
   let previousYear =
     year;
@@ -130,12 +148,17 @@ function getPreviousDay({
   let previousMonth =
     month - 1;
 
+
   if (
     previousMonth === 0
   ) {
-    previousMonth = 12;
-    previousYear -= 1;
+    previousMonth =
+      12;
+
+    previousYear -=
+      1;
   }
+
 
   return {
     year:
@@ -153,12 +176,35 @@ function getPreviousDay({
 }
 
 
+function createCycleDate(
+  year,
+  month,
+  rentCycleDay
+) {
+  return {
+    year,
+    month,
+
+    day:
+      Math.min(
+        rentCycleDay,
+        getDaysInMonth(
+          year,
+          month
+        )
+      ),
+  };
+}
+
+
 function getTodayDateString() {
   const now =
     new Date();
 
+
   const year =
     now.getFullYear();
+
 
   const month =
     String(
@@ -168,6 +214,7 @@ function getTodayDateString() {
       "0"
     );
 
+
   const day =
     String(
       now.getDate()
@@ -176,22 +223,41 @@ function getTodayDateString() {
       "0"
     );
 
+
   return `${year}-${month}-${day}`;
 }
 
 
-export function calculateRentCycle(
-  startDate
+export function validateRentCycleDay(
+  value
 ) {
-  /*
-   * Business date only.
-   *
-   * Expected:
-   * YYYY-MM-DD
-   *
-   * Do not convert this value with:
-   * new Date(startDate)
-   */
+  const rentCycleDay =
+    Number(
+      value
+    );
+
+
+  if (
+    !Number.isInteger(
+      rentCycleDay
+    ) ||
+    rentCycleDay < 1 ||
+    rentCycleDay > 31
+  ) {
+    throw new Error(
+      "Rent cycle day must be between 1 and 31"
+    );
+  }
+
+
+  return rentCycleDay;
+}
+
+
+export function calculateRentCycle(
+  startDate,
+  rentCycleDay = null
+) {
   const start =
     parseDateString(
       startDate,
@@ -199,53 +265,31 @@ export function calculateRentCycle(
     );
 
 
-  /*
-   * Next billing date uses the
-   * same calendar day in the
-   * following month.
-   */
+  const cycleDay =
+    rentCycleDay ===
+      null ||
+    rentCycleDay ===
+      undefined
+      ? start.day
+      : validateRentCycleDay(
+          rentCycleDay
+        );
+
+
   const nextMonth =
     getNextMonth(
       start
     );
 
 
-  /*
-   * Clamp the day for shorter
-   * months.
-   *
-   * Example:
-   *
-   * Jan 31 -> Feb 28
-   * Jan 31 -> Feb 29 leap year
-   */
-  const lastDayOfNextMonth =
-    getDaysInMonth(
+  const nextBillingDate =
+    createCycleDate(
       nextMonth.year,
-      nextMonth.month
+      nextMonth.month,
+      cycleDay
     );
 
 
-  const nextBillingDate =
-    {
-      year:
-        nextMonth.year,
-
-      month:
-        nextMonth.month,
-
-      day:
-        Math.min(
-          start.day,
-          lastDayOfNextMonth
-        ),
-    };
-
-
-  /*
-   * Billing period ends one day
-   * before the next billing date.
-   */
   const billingPeriodEnd =
     getPreviousDay(
       nextBillingDate
@@ -272,7 +316,8 @@ export function calculateRentCycle(
 
 
 export function calculateNextRentCycle(
-  previousBill
+  previousBill,
+  rentCycleDay
 ) {
   if (
     !previousBill?.dueDate
@@ -282,27 +327,17 @@ export function calculateNextRentCycle(
     );
   }
 
+
   /*
-   * Example:
+   * Previous dueDate becomes the next
+   * billingPeriodStart.
    *
-   * Previous:
-   * 2026-08-17
-   *     →
-   * 2026-09-16
-   *
-   * Due:
-   * 2026-09-17
-   *
-   * Next:
-   * 2026-09-17
-   *     →
-   * 2026-10-16
-   *
-   * Due:
-   * 2026-10-17
+   * rentCycleDay remains the permanent
+   * anchor.
    */
   return calculateRentCycle(
-    previousBill.dueDate
+    previousBill.dueDate,
+    rentCycleDay
   );
 }
 
@@ -317,23 +352,20 @@ export function calculateRentStatus({
       amountDue
     );
 
+
   const paid =
     Number(
       amountPaid
     );
 
 
-  if (paid >= due) {
+  if (
+    paid >= due
+  ) {
     return "PAID";
   }
 
 
-  /*
-   * dueDate is YYYY-MM-DD.
-   *
-   * Validate it but do not convert
-   * it to a JavaScript Date.
-   */
   parseDateString(
     dueDate,
     "Invalid rent due date"
@@ -344,17 +376,6 @@ export function calculateRentStatus({
     getTodayDateString();
 
 
-  /*
-   * YYYY-MM-DD strings can be compared
-   * directly because the format is
-   * lexicographically sortable.
-   *
-   * Due today:
-   * not overdue.
-   *
-   * Due before today:
-   * overdue.
-   */
   if (
     dueDate <
     today
@@ -363,7 +384,9 @@ export function calculateRentStatus({
   }
 
 
-  if (paid > 0) {
+  if (
+    paid > 0
+  ) {
     return "PARTIAL";
   }
 
@@ -383,6 +406,7 @@ export function calculateBalance(
     Number(
       amountPaid
     );
+
 
   return Math.max(
     balance,

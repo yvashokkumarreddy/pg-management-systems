@@ -10,85 +10,168 @@ import {
 import {
   validateCreatePayment,
 } from "@/modules/payments/payment.validation";
-import { getCurrentOwner } from "@/modules/auth/auth.service";
 
+import {
+  getCurrentOwner,
+} from "@/modules/auth/auth.service";
+
+
+/* ======================================================
+   POST /api/payments
+====================================================== */
 
 export async function POST(
   request
 ) {
   try {
+    const {
+      ownerId,
+    } =
+      await getCurrentOwner();
+
+
     const body =
       await request.json();
-    const { ownerId } =
-  await getCurrentOwner();
+
+
+    /* ==================================================
+       VALIDATION
+    ================================================== */
 
     const validation =
       validateCreatePayment(
         body
       );
 
-    if (!validation.isValid) {
+
+    if (
+      !validation.isValid
+    ) {
       return NextResponse.json(
         {
-          success: false,
+          success:
+            false,
+
           message:
-            validation.errors.file,
+            "Validation failed",
+
           errors:
             validation.errors,
         },
         {
-          status: 400,
+          status:
+            400,
         }
       );
     }
 
+
+    /* ==================================================
+       CREATE PAYMENT
+    ================================================== */
+
     const result =
       await createPaymentService({
+        ...body,
+
         ownerId,
-        ...body
-      }
-      );
+
+        /*
+         * Normalize optional checkbox.
+         *
+         * Existing frontend requests that
+         * don't send this field continue
+         * behaving exactly as before.
+         */
+        markNoticePeriod:
+          body.markNoticePeriod ===
+          true,
+      });
+
 
     return NextResponse.json(
       {
-        success: true,
+        success:
+          true,
+
         message:
-          "Payment recorded successfully",
-        data: result,
+          result.notice
+            ? "Payment recorded and tenant notice period started successfully"
+            : "Payment recorded successfully",
+
+        data:
+          result,
       },
       {
-        status: 201,
+        status:
+          201,
       }
     );
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       "Create payment error:",
       error
     );
 
-    let status = 400;
+
+    let status =
+      400;
+
+
+    /* ==================================================
+       AUTH
+    ================================================== */
 
     if (
-      error.message ===
-      "Tenant not found" ||
-      error.message ===
-      "Rent bill not found"
+      error?.name ===
+        "UnauthorizedError" ||
+      error?.message ===
+        "Unauthorized"
     ) {
-      status = 404;
+      status =
+        401;
     }
 
-    if (
-      error.message ===
-      "Rent bill is already fully paid"
+    /* ==================================================
+       NOT FOUND
+    ================================================== */
+
+    else if (
+      error?.message ===
+        "Tenant not found" ||
+      error?.message ===
+        "Rent bill not found"
     ) {
-      status = 409;
+      status =
+        404;
     }
+
+    /* ==================================================
+       CONFLICT
+    ================================================== */
+
+    else if (
+      error?.message ===
+        "Rent bill is already fully paid" ||
+      error?.message ===
+        "One of the selected rent bills is already fully paid" ||
+      error?.message ===
+        "Tenant is already in notice period"
+    ) {
+      status =
+        409;
+    }
+
 
     return NextResponse.json(
       {
-        success: false,
+        success:
+          false,
+
         message:
-          error.message ||
+          error?.message ||
           "Failed to record payment",
       },
       {
@@ -99,50 +182,60 @@ export async function POST(
 }
 
 
-export async function GET(
-  request
-) {
-  try {
-    const { ownerId } =
-  await getCurrentOwner();
+/* ======================================================
+   GET /api/payments
+====================================================== */
 
-    if (!ownerId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "Owner ID is required",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
+export async function GET() {
+  try {
+    const {
+      ownerId,
+    } =
+      await getCurrentOwner();
+
 
     const payments =
       await getPaymentsService(
         ownerId
       );
 
+
     return NextResponse.json({
-      success: true,
-      data: payments,
+      success:
+        true,
+
+      data:
+        payments,
     });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       "Get payments error:",
       error
     );
 
+
+    const status =
+      error?.name ===
+        "UnauthorizedError" ||
+      error?.message ===
+        "Unauthorized"
+        ? 401
+        : 500;
+
+
     return NextResponse.json(
       {
-        success: false,
+        success:
+          false,
+
         message:
-          error.message ||
+          error?.message ||
           "Failed to get payments",
       },
       {
-        status: 500,
+        status,
       }
     );
   }
